@@ -3,9 +3,9 @@
   <arg name="dataroot" default = "/workspace/mav0" />
   <arg name="camera_config_path" default = "$(find air_slam)/configs/camera/euroc.yaml" />
   <arg name="model_dir" default = "$(find air_slam)/output" />
-  <arg name="saving_dir" default = "$(find air_slam)/debug" />
+  <arg name="saving_dir" default = "$(find air_slam)/debug_topic" />
 
-  <node name="visual_odometry" pkg="air_slam" type="visual_odometry" output="screen">
+  <node name="visual_odometry" pkg="air_slam" type="visual_odometry_topic_version" output="screen">
     <param name="config_path" type="string" value="$(arg config_path)" />
     <param name="dataroot" type="string" value="$(arg dataroot)" />
     <param name="camera_config_path" type="string" value="$(arg camera_config_path)" />

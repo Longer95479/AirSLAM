@@ -46,6 +46,15 @@ int main(int argc, char **argv) {
     data->image_right = image_right;
     data->batch_imu_data = batch_imu_data;
 
+    // DEBUG
+    printf("image timestamp: %f\n", timestamp);
+    std::cout << "batch_imu_data size: " << batch_imu_data.size() << std::endl;
+    for (auto &imu_data: batch_imu_data) {
+      printf("%f  ", imu_data.timestamp);
+    }
+    printf("\n");
+    // DEBUG END
+    
     auto before_infer = std::chrono::high_resolution_clock::now();   
     map_builder.AddInput(data);
     auto after_infer = std::chrono::high_resolution_clock::now();

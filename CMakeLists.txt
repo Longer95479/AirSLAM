@@ -79,6 +79,7 @@ add_library(${PROJECT_NAME}_lib SHARED
   src/mapline.cc
   src/line_processor.cc
   src/ros_publisher.cc
+  src/ros_subscriber.cc
   src/map.cc
   src/map_builder.cc
   src/map_refiner.cc
@@ -104,6 +105,9 @@ target_link_libraries(${PROJECT_NAME}_lib
 
 add_executable(visual_odometry demo/visual_odometry.cpp)
 target_link_libraries(visual_odometry ${PROJECT_NAME}_lib ${catkin_LIBRARIES})
+
+add_executable(visual_odometry_topic_version demo/visual_odometry_topic_version.cpp)
+target_link_libraries(visual_odometry_topic_version ${PROJECT_NAME}_lib ${catkin_LIBRARIES})
 
 add_executable(map_refinement demo/map_refinement.cpp)
 target_link_libraries(map_refinement ${PROJECT_NAME}_lib ${catkin_LIBRARIES})
