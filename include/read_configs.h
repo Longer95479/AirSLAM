@@ -198,6 +198,22 @@ struct RosPublisherConfig{
   std::string reloc_topic;
 };
 
+struct RosSubscriberConfig{
+  RosSubscriberConfig() {}
+  void Load(const YAML::Node& ros_subscriber_node){
+    sub_topic= ros_subscriber_node["sub_topic"].as<int>();
+    imu_topic = ros_subscriber_node["imu_topic"].as<std::string>();   
+    left_img_topic = ros_subscriber_node["left_img_topic"].as<std::string>();   
+    right_img_topic = ros_subscriber_node["right_img_topic"].as<std::string>();   
+  }
+  
+  int sub_topic;
+  std::string imu_topic;
+  std::string left_img_topic;
+  std::string right_img_topic;
+
+};
+
 
 struct VisualOdometryConfigs{
   std::string dataroot;
@@ -213,6 +229,7 @@ struct VisualOdometryConfigs{
   OptimizationConfig tracking_optimization_config;
   OptimizationConfig backend_optimization_config;
   RosPublisherConfig ros_publisher_config;
+  RosSubscriberConfig ros_subscriber_config;
 
   VisualOdometryConfigs() {}
 
@@ -237,6 +254,7 @@ struct VisualOdometryConfigs{
     tracking_optimization_config.Load(file_node["optimization"]["tracking"]);
     backend_optimization_config.Load(file_node["optimization"]["backend"]);
     ros_publisher_config.Load(file_node["ros_publisher"]);
+    ros_subscriber_config.Load(file_node["ros_subscriber"]);
   }
 };
 

@@ -14,7 +14,9 @@ using namespace tensorrt_log;
 using namespace tensorrt_buffer;
 
 SuperPointLightGlue::SuperPointLightGlue(const PointMatcherConfig &lightglue_config) : lightglue_config_(lightglue_config), engine_(nullptr) {
-  setReportableSeverity(Logger::Severity::kINTERNAL_ERROR);
+  // setReportableSeverity(Logger::Severity::kINTERNAL_ERROR);
+  setReportableSeverity(Logger::Severity::kINFO);
+
 }
 
 bool SuperPointLightGlue::build() {
