@@ -2,13 +2,15 @@
 #include <Eigen/Geometry>
 #include "utils.h"
 
-RosSubscriber::RosSubscriber(const RosSubscriberConfig& ros_subscriber_config, ros::NodeHandle nh, MapBuilder &map_builder): _config(ros_subscriber_config), _last_image_time(-1.0), _frame_index(0), _map_builder(map_builder)
+RosSubscriber::RosSubscriber(const RosSubscriberConfig& ros_subscriber_config, ros::NodeHandle nh, MapBuilder &map_builder): _config(ros_subscriber_config), _last_image_time(-1.0), _frame_index(0), _map_builder(map_builder), _use_imu(map_builder.UseIMU())
 {
 
   if (_config.sub_topic) {
     _ros_left_img_sub = nh.subscribe(_config.left_img_topic, 100, &RosSubscriber::leftImgCallBack, this);
     _ros_right_img_sub = nh.subscribe(_config.right_img_topic, 100, &RosSubscriber::rightImgCallBack, this);
-    _ros_imu_sub = nh.subscribe(_config.imu_topic, 2000, &RosSubscriber::imuCallBack, this);
+    if (_use_imu) {
+      _ros_imu_sub = nh.subscribe(_config.imu_topic, 2000, &RosSubscriber::imuCallBack, this);
+    }
 
     _sync_thread = std::thread(boost::bind(&RosSubscriber::sync_thread, this));
   }
@@ -59,18 +61,18 @@ cv::Mat RosSubscriber::getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg
 }
 
 
-bool RosSubscriber::batchImuData(double t0, double t1, ImuDataList &batch_imu_data)
+int RosSubscriber::batchImuData(double t0, double t1, ImuDataList &batch_imu_data)
 {
   ImuData imu_data, back_imu_data, second_back_imu_data;
   
   if (_imu_buf.empty()) {
     ROS_WARN("Not receive imu");
-    return false;
+    return 0;
   }
 
   if (t1 >= _imu_buf.back()->header.stamp.toSec()) {
     ROS_WARN("Wait for imu");
-    return false;
+    return -1;
   }
  
   if (batch_imu_data.size() >= 2) {
@@ -100,7 +102,7 @@ bool RosSubscriber::batchImuData(double t0, double t1, ImuDataList &batch_imu_da
 
   _m_buf.unlock();
 
-  return true;
+  return 1;
 }
 
 
@@ -144,8 +146,10 @@ void RosSubscriber::sync_thread() {
       }
       else {
         std::cout << "i ====== " << _frame_index << std::endl;
+#ifdef VERBOSE
         printf("_left_img_buf size: %d\n", _left_img_buf.size());
         printf("_right_img_buf size: %d\n", _right_img_buf.size());
+#endif
         _image_time = _left_img_buf.front()->header.stamp.toSec();
         header = _left_img_buf.front()->header;
         img_left = getImageFromMsg(_left_img_buf.front());
@@ -157,34 +161,53 @@ void RosSubscriber::sync_thread() {
     _m_buf.unlock();
 
     if (!img_left.empty()) {
-      bool has_batch = false;
-      while (!has_batch) {
-        has_batch = batchImuData(_last_image_time, _image_time, _batch_imu_data);
-        usleep(2000);
+      int has_batch;
+
+      if (_use_imu) {
+        while (true) {
+          has_batch = batchImuData(_last_image_time, _image_time, _batch_imu_data);
+          // wait for imu
+          if (has_batch == -1) 
+            usleep(2000);
+          // no imu data or normal return
+          else if (has_batch == 0 || has_batch == 1)
+            break;
+          else {
+            std::cout << "batchImuData return wrong." << std::endl;
+            break;
+          }
+        }
       }
-      if (has_batch) {
-        // printf("_batch_imu_data size = %d\n", _batch_imu_data.size());
-        // printf("t0 = %f, t1 = %f\n", _last_image_time, _image_time);
-        // for (auto &imu_data: _batch_imu_data) {
-        //   printf("%f  ", imu_data.timestamp);
-        // }
-        // printf("\n");
+
+#ifdef VERBOSE
+      // printf("_batch_imu_data size = %d\n", _batch_imu_data.size());
+      printf("t0 = %f, t1 = %f\n", _last_image_time, _image_time);
+      // for (auto &imu_data: _batch_imu_data) {
+      //   printf("%f  ", imu_data.timestamp);
+      // }
+      // printf("\n");
+#endif
       
-        InputDataPtr data = std::shared_ptr<InputData>(new InputData());
-        data->index = _frame_index;
-        data->time = _image_time;
-        data->image_left = img_left;
-        data->image_right = img_right;
-        data->batch_imu_data = _batch_imu_data;
-        
-        auto before_infer = std::chrono::high_resolution_clock::now();   
-        _map_builder.AddInput(data);
-        auto after_infer = std::chrono::high_resolution_clock::now();
-        auto cost_time = std::chrono::duration_cast<std::chrono::milliseconds>(after_infer - before_infer).count();
-        std::cout << "One Frame Processinh Time: " << cost_time << " ms." << std::endl;
-        _frame_index++;
-        _last_image_time = _image_time;
+      // using imu and no imu data before imgs
+      if (_use_imu && has_batch == 0) { 
+        ROS_WARN("throw left and right imgs");
+        continue;
       }
+      
+      InputDataPtr data = std::shared_ptr<InputData>(new InputData());
+      data->index = _frame_index;
+      data->time = _image_time;
+      data->image_left = img_left;
+      data->image_right = img_right;
+      data->batch_imu_data = _batch_imu_data;
+      
+      auto before_infer = std::chrono::high_resolution_clock::now();   
+      _map_builder.AddInput(data);
+      auto after_infer = std::chrono::high_resolution_clock::now();
+      auto cost_time = std::chrono::duration_cast<std::chrono::milliseconds>(after_infer - before_infer).count();
+      std::cout << "One Frame Processinh Time: " << cost_time << " ms." << std::endl;
+      _frame_index++;
+      _last_image_time = _image_time;
     }
   }
 }

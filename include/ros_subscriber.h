@@ -33,7 +33,7 @@ public:
   
   cv::Mat getImageFromMsg(const sensor_msgs::ImageConstPtr &img_msg);
   void getImuFrontFromMsg(ImuData &imu_data, ImuDataList &batch_imu_data);
-  bool batchImuData(double t0, double t1, ImuDataList &batch_imu_data);
+  int batchImuData(double t0, double t1, ImuDataList &batch_imu_data);
 
 private:
   RosSubscriberConfig _config;	//TODO in read_configs.h
@@ -55,6 +55,7 @@ private:
   double _last_image_time, _image_time;
   int _frame_index;
 
+  bool _use_imu;
   ImuDataList _batch_imu_data;
 };
 
