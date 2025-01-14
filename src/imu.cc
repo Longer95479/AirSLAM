@@ -218,7 +218,7 @@ void Preinteration::Repropagate(){
 void Preinteration::AddBatchData(const ImuDataList& batch_imu_data, double t0, double t1){
   if(batch_imu_data.empty()) return;
   start_time = start_time > 0 ? start_time : t0;
-  assert(std::abs(end_time-t0)<1e-5 || end_time < 0);
+  assert(std::abs(end_time-t0)>1e-5 || end_time < 0);
   end_time = t1;
   size_t i = 0;
 
