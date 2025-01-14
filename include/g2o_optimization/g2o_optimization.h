@@ -1,5 +1,7 @@
 #ifndef G2O_OPTIMIZATION_H_
 #define G2O_OPTIMIZATION_H_
+ 
+#define USING_TIME_COMPENSATION
 
 #include <vector>
 
@@ -20,6 +22,12 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
     VectorOfMonoPointConstraints& mono_point_constraints, VectorOfStereoPointConstraints& stereo_point_constraints, 
     VectorOfMonoLineConstraints& mono_line_constraints, VectorOfStereoLineConstraints& stereo_line_constraints,
     VectorOfIMUConstraints& imu_constraints, const Eigen::Matrix3d& Rwg, const OptimizationConfig& cfg);
+
+void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d& lines, 
+    MapOfVelocity& velocities, MapOfBias& biases, std::vector<CameraPtr>& camera_list, 
+    VectorOfMonoPointConstraints& mono_point_constraints, VectorOfStereoPointConstraints& stereo_point_constraints, 
+    VectorOfMonoLineConstraints& mono_line_constraints, VectorOfStereoLineConstraints& stereo_line_constraints,
+    VectorOfIMUConstraints& imu_constraints, const Eigen::Matrix3d& Rwg, double& td, const OptimizationConfig& cfg);
 
 int FrameOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d& lines,
     MapOfVelocity& velocities, MapOfBias& biases, std::vector<CameraPtr>& camera_list, 

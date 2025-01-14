@@ -13,6 +13,14 @@ Frame::Frame(int frame_id, bool pose_fixed, CameraPtr camera, double timestamp):
   _grid_height_inv = static_cast<double>(FRAME_GRID_ROWS)/static_cast<double>(_camera->ImageHeight());
 }
 
+Frame::Frame(int frame_id, bool pose_fixed, CameraPtr camera, double timestamp, double td_used):
+    tracking_frame_id(-1), local_map_optimization_frame_id(-1), local_map_optimization_fix_frame_id(-1),
+    _frame_id(frame_id), _pose_fixed(pose_fixed), _camera(camera), _timestamp(timestamp), _td_used(td_used), _init_v(false){
+  _grid_width_inv = static_cast<double>(FRAME_GRID_COLS)/static_cast<double>(_camera->ImageWidth());
+  _grid_height_inv = static_cast<double>(FRAME_GRID_ROWS)/static_cast<double>(_camera->ImageHeight());
+}
+
+
 // Frame& Frame::operator=(const Frame& other){
 //   tracking_frame_id = other.tracking_frame_id;
 //   local_map_optimization_frame_id = other.local_map_optimization_frame_id;
@@ -53,6 +61,14 @@ int Frame::GetFrameId(){
 
 double Frame::GetTimestamp(){
   return _timestamp;
+}
+
+double Frame::GetTdUsed(){
+  return _td_used;
+}
+
+void Frame::SetTdUsed(double td_used){
+  _td_used = td_used;
 }
 
 void Frame::SetPoseFixed(bool pose_fixed){
@@ -117,6 +133,10 @@ void Frame::AddLeftFeatures(Eigen::Matrix<float, 259, Eigen::Dynamic>& features_
   SetTrackIds(track_ids);
   std::vector<MappointPtr> mappoints(features_left_size, nullptr);
   _mappoints = mappoints;
+
+  // initialize keypoint_velocity
+  std::vector<Eigen::Vector2f> velocity(features_left_size, Eigen::Vector2f(0.0f, 0.0f));
+  _keypoints_velocity = velocity;
 
   // assign points to lines
   _lines = lines_left;
@@ -213,8 +233,18 @@ bool Frame::GetKeypointPosition(size_t idx, Eigen::Vector3d& keypoint_pos){
   return true;
 }
 
+bool Frame::GetKeypointVelocity(size_t idx, Eigen::Vector2d& keypoint_vel){
+  if(idx > _keypoints_velocity.size()) return false;
+  keypoint_vel = _keypoints_velocity[idx].cast<double>();
+  return true;
+}
+
 std::vector<cv::KeyPoint>& Frame::GetAllKeypoints(){
   return _keypoints;
+}
+
+std::vector<Eigen::Vector2f>& Frame::GetAllVelocity(){
+  return _keypoints_velocity;
 }
 
 cv::KeyPoint& Frame::GetKeypoint(size_t idx){

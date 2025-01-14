@@ -35,6 +35,7 @@ struct FeatureMessgae{
   std::vector<bool> inliers;
   std::vector<cv::KeyPoint> keyframe_keypoints;
   std::vector<cv::KeyPoint> keypoints;
+  std::vector<Eigen::Vector2f> velocity;
   std::vector<Eigen::Vector4d> lines;
   std::vector<int> line_track_ids;
   std::vector<std::map<int, double>> points_on_lines;

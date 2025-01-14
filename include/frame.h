@@ -28,6 +28,7 @@ class Frame{
 public:
   Frame();
   Frame(int frame_id, bool pose_fixed, CameraPtr camera, double timestamp);
+  Frame(int frame_id, bool pose_fixed, CameraPtr camera, double timestamp, double td_used);
   // Frame& operator=(const Frame& other);
 
   void SetFrameId(int frame_id);
@@ -37,6 +38,8 @@ public:
   bool PoseFixed();
   void SetPose(const Eigen::Matrix4d& pose);
   Eigen::Matrix4d& GetPose();
+  double GetTdUsed();
+  void SetTdUsed(double td_used);
 
   // point features
   bool FindGrid(float& x, float& y, int& grid_x, int& grid_y);
@@ -51,9 +54,12 @@ public:
   size_t FeatureNum();
 
   bool GetKeypointPosition(size_t idx, Eigen::Vector3d& keypoint_pos);
+  bool GetKeypointVelocity(size_t idx, Eigen::Vector2d& keypoint_vel);
   std::vector<cv::KeyPoint>& GetAllKeypoints();
   cv::KeyPoint& GetKeypoint(size_t idx);
   int GetInlierFlag(std::vector<bool>& inliers_feature_message);
+
+  std::vector<Eigen::Vector2f>& GetAllVelocity();
 
   double GetRightPosition(size_t idx);
   std::vector<double>& GetAllRightPosition(); 
@@ -186,12 +192,14 @@ private:
 private:
   int _frame_id;
   double _timestamp;
+  double _td_used;
   bool _pose_fixed;
   Eigen::Matrix4d _pose;
 
   // point features
   Eigen::Matrix<float, 259, Eigen::Dynamic> _features;
   std::vector<cv::KeyPoint> _keypoints;
+  std::vector<Eigen::Vector2f> _keypoints_velocity;
   std::vector<int> _feature_grid[FRAME_GRID_COLS][FRAME_GRID_ROWS];
   double _grid_width_inv;
   double _grid_height_inv;

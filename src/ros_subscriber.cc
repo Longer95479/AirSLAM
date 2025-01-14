@@ -162,10 +162,11 @@ void RosSubscriber::sync_thread() {
 
     if (!img_left.empty()) {
       int has_batch;
+      double td = _map_builder.GetTd();
 
       if (_use_imu) {
         while (true) {
-          has_batch = batchImuData(_last_image_time, _image_time, _batch_imu_data);
+          has_batch = batchImuData(_last_image_time + td, _image_time + td, _batch_imu_data);
           // wait for imu
           if (has_batch == -1) 
             usleep(2000);
@@ -187,6 +188,7 @@ void RosSubscriber::sync_thread() {
       // }
       // printf("\n");
 #endif
+      printf("td = %f\n", td);
       
       // using imu and no imu data before imgs
       if (_use_imu && has_batch == 0) { 
@@ -197,6 +199,7 @@ void RosSubscriber::sync_thread() {
       InputDataPtr data = std::shared_ptr<InputData>(new InputData());
       data->index = _frame_index;
       data->time = _image_time;
+      data->td_used = td;
       data->image_left = img_left;
       data->image_right = img_right;
       data->batch_imu_data = _batch_imu_data;

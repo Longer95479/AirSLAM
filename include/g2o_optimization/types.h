@@ -60,7 +60,9 @@ struct MonoPointConstraint {
 
   // x_left, y_left
   Eigen::Vector2d keypoint;  
+  Eigen::Vector2d velocity;  
   double pixel_sigma;
+  double td_used;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -71,7 +73,9 @@ struct MonoPointConstraint {
 		id_camera = other.id_camera;
 		inlier = other.inlier;
 		keypoint = other.keypoint;
+		velocity = other.velocity;
 		pixel_sigma = other.pixel_sigma;
+		td_used = other.td_used;
 		return *this;
 	}
 };
@@ -87,7 +91,9 @@ struct StereoPointConstraint {
 
   // x_left, y_left, x_right
   Eigen::Vector3d keypoint;  
+  Eigen::Vector2d velocity;  
   double pixel_sigma;
+  double td_used;
 
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -98,7 +104,9 @@ struct StereoPointConstraint {
 		id_camera = other.id_camera;
 		inlier = other.inlier;
 		keypoint = other.keypoint;
+		velocity = other.velocity;
 		pixel_sigma = other.pixel_sigma;
+		td_used = other.td_used;
 		return *this;
 	}
 };

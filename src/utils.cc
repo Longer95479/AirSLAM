@@ -101,6 +101,43 @@ cv::Mat DrawFeatures(const cv::Mat& image, const std::vector<cv::KeyPoint>& keyp
   return drawed_image;
 }
 
+// TODO draw velocity
+cv::Mat DrawFeatures(const cv::Mat& image, const std::vector<cv::KeyPoint>& keypoints, const std::vector<Eigen::Vector2f>& velocity, const std::vector<Eigen::Vector4d>& lines, bool draw_on_one){
+  cv::Mat img_color;
+  cv::cvtColor(image, img_color, cv::COLOR_GRAY2RGB);
+
+  // draw points
+  for(size_t j = 0; j < keypoints.size(); j++){
+    cv::circle(img_color, keypoints[j].pt, 2, cv::Scalar(0, 255, 0), 2, cv::LINE_AA);
+  }
+
+  // draw velocity
+  for(size_t j = 0; j < velocity.size(); j++){
+    cv::Point2f startpoint, endpoint;
+    cv::Point2f dir(velocity[j](0), velocity[j](1));
+
+    startpoint = keypoints[j].pt;
+    endpoint = keypoints[j].pt + 0.1f *  dir;
+
+    cv::arrowedLine(img_color, startpoint, endpoint, cv::Scalar(255, 0, 255), 1, 8, 0, 0.3);
+  }
+
+  // draw lines
+  cv::Mat drawed_image;
+  cv::Mat line_image = img_color.clone();
+  for(size_t i = 0; i < lines.size(); i++){
+    Eigen::Vector4d line = lines[i];
+    cv::line(line_image, cv::Point2i((int)(line(0)+0.5), (int)(line(1)+0.5)), 
+        cv::Point2i((int)(line(2)+0.5), (int)(line(3)+0.5)), cv::Scalar(0, 0, 255), 3);
+  }
+
+  if(draw_on_one){
+    drawed_image = line_image;
+  }else{
+    cv::hconcat(line_image, img_color, drawed_image);
+  }
+return drawed_image;
+}
 
 cv::Mat DrawFeatures(const cv::Mat& image, const std::vector<cv::KeyPoint>& keypoints, 
     const std::vector<bool>& inliers, const std::vector<Eigen::Vector4d>& lines, 
@@ -313,3 +350,23 @@ void SaveTumTrajectoryToFile(const std::string file_path,
   }
   f.close();
 }
+
+bool saveTdToCSV(const std::vector<std::pair<double, double>>& tsp_tds, const std::string& filename)
+{
+  std::ofstream file(filename);
+
+  if (file.is_open()) {
+    for (auto& tsp_td: tsp_tds) {
+      file << tsp_td.first << "," << tsp_td.second << "\n";
+    }
+    file.close();
+    std::cout << "data have been saved to " << filename << std::endl;
+    return true;
+  }
+  else {
+    std::cerr << "Can't open files" << filename << std::endl;
+    return false;
+  }
+
+}
+

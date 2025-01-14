@@ -22,6 +22,7 @@
 struct InputData{
   size_t index;
   double time;
+  double td_used; /* time compenstation, fix for a frame*/
   cv::Mat image_left;
   cv::Mat image_right;
   ImuDataList batch_imu_data;
@@ -65,6 +66,8 @@ class MapBuilder{
 public:
   MapBuilder(VisualOdometryConfigs& configs, ros::NodeHandle nh);
   bool UseIMU();
+  double GetTd();
+  // bool saveTdToCSV(const std::vector<std::pair<double, double>>& tsp_tds, const std::string& filename);
   void AddInput(InputDataPtr data);
   void ExtractFeatureThread();
   void TrackingThread();
@@ -74,7 +77,9 @@ public:
   int FramePoseOptimization(FramePtr frame0, FramePtr frame, std::vector<MappointPtr>& mappoints, std::vector<int>& inliers, 
       Preinteration& preinteration);
   int AddKeyframeCheck(FramePtr ref_keyframe, FramePtr current_frame, const std::vector<cv::DMatch>&);
+  bool CalFeaturesVelocity(FramePtr current_frame);
   void InsertKeyframe(FramePtr frame);
+  void InsertKeyframe(FramePtr frame, double& td);
 
   void PublishFrame(FramePtr frame, cv::Mat& image, FrameType frame_type, std::vector<cv::DMatch>& matches);
   void SaveTrajectory();
@@ -117,6 +122,12 @@ private:
 
   // for imu
   Preinteration _preinteration_keyframe;
+
+  // for cam and imu timestamp compensation
+  // imu_t_cam = cam_t_cam + td
+  double _td;
+  //for saving to csv and plot
+  std::vector<std::pair<double, double>> tsp_tds;
 
 private:
   // class

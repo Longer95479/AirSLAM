@@ -22,7 +22,7 @@
 #include "debug.h"
 
 MapBuilder::MapBuilder(VisualOdometryConfigs& configs, ros::NodeHandle nh): _shutdown(false), _feature_thread_stop(false), 
-    _tracking_trhead_stop(false), _init(false), _insert_next_keyframe(false), _track_id(0), _line_track_id(0), _configs(configs){
+    _tracking_trhead_stop(false), _init(false), _insert_next_keyframe(false), _track_id(0), _line_track_id(0), _td(0.0), _configs(configs){
   _camera = std::shared_ptr<Camera>(new Camera(configs.camera_config_path));
   _preinteration_keyframe.SetNoiseAndWalk(_camera->GyrNoise(), _camera->AccNoise(), _camera->GyrWalk(), _camera->AccWalk());
   _point_matcher = std::shared_ptr<PointMatcher>(new PointMatcher(configs.point_matcher_config));
@@ -36,6 +36,10 @@ MapBuilder::MapBuilder(VisualOdometryConfigs& configs, ros::NodeHandle nh): _shu
 
 bool MapBuilder::UseIMU(){
   return _camera->UseIMU();
+}
+
+double MapBuilder::GetTd(){
+  return _td;
 }
 
 void MapBuilder::AddInput(InputDataPtr data){
@@ -68,12 +72,14 @@ void MapBuilder::ExtractFeatureThread(){
 
     int frame_id = input_data->index;
     double timestamp = input_data->time;
+    double td_used = input_data->td_used;
     cv::Mat image_left_rect = input_data->image_left.clone();
     cv::Mat image_right_rect = input_data->image_right.clone();
 
 
     // construct frame
-    FramePtr frame = std::shared_ptr<Frame>(new Frame(frame_id, false, _camera, timestamp));
+    FramePtr frame = std::shared_ptr<Frame>(new Frame(frame_id, false, _camera, timestamp + td_used));
+    frame->SetTdUsed(td_used);
 
     Eigen::Matrix<float, 259, Eigen::Dynamic> left_features, right_features; 
     std::vector<Eigen::Vector4d> left_lines, right_lines;
@@ -124,6 +130,7 @@ void MapBuilder::ExtractFeatureThread(){
         std::cout << "Not enough stereo points to initialize!" << std::endl;
         continue;
       }else{
+        std::cout << "Initialization Frame id = " << frame_id  << std::endl;
         std::cout << "Initialization is done!" << std::endl;
         _init = true;
       }
@@ -173,7 +180,8 @@ void MapBuilder::TrackingThread(){
     InputDataPtr input_data = tracking_data->input_data;
     std::vector<cv::DMatch> matches = tracking_data->matches;
 
-    double timestamp = input_data->time;
+    // double timestamp = input_data->time;
+    double timestamp = frame->GetTimestamp(); /* has compensated  */
     cv::Mat image_left_rect = input_data->image_left.clone();
     cv::Mat image_right_rect = input_data->image_right.clone();
     ImuDataList batch_imu_data = input_data->batch_imu_data;
@@ -188,7 +196,6 @@ void MapBuilder::TrackingThread(){
 
       _preinteration_keyframe.SetBias(Eigen::Vector3d::Zero(), Eigen::Vector3d::Zero(), false);
       frame->SetIMUPreinteration(_preinteration_keyframe);
-
       InsertKeyframe(frame);
       _last_keyframe_tracking = frame;
       _last_tracked_frame = frame;
@@ -208,24 +215,103 @@ void MapBuilder::TrackingThread(){
 
     frame->SetPreviousFrame(ref_keyframe);
 
-    if(track_inliers > _configs.keyframe_config.lost_num_match){ 
-      _last_tracked_frame = frame;
-    }
-
     if(frame_type == FrameType::KeyFrame){
       std::cout << "insert keyframe, id = " << frame->GetFrameId() << std::endl;
+      // calculate features velocity tracked in the keyframe
+      CalFeaturesVelocity(frame);
       InsertKeyframe(frame);
       _last_keyframe_tracking = frame;
       _last_keyimage = image_left_rect;
+
+      // for saving td to csv
+      tsp_tds.push_back(std::make_pair(timestamp, _td));
+    }
+
+    if(track_inliers > _configs.keyframe_config.lost_num_match){ 
+      _last_tracked_frame = frame;
     }
 
     PublishFrame(frame, image_left_rect, frame_type, matches);
   }  
 
+  saveTdToCSV(tsp_tds, "/workspace/timestamp_td.csv");
+
   _stop_mutex.lock();
   _tracking_trhead_stop = true;
   _stop_mutex.unlock();
 }
+
+// bool MapBuilder::saveTdToCSV(const std::vector<std::pair<double, double>>& tsp_tds, const std::string& filename)
+// {
+//   std::ofstream file(filename);
+// 
+//   if (file.is_open()) {
+//     for (auto& tsp_td: tsp_tds) {
+//       file << tsp_td.first << "," << tsp_td.second << "\n";
+//     }
+//     file.close();
+//     std::cout << "data have been saved to " << filename << std::endl;
+//     return true;
+//   }
+//   else {
+//     std::cerr << "Can't open files" << filename << std::endl;
+//     return false;
+//   }
+// 
+// }
+
+bool MapBuilder::CalFeaturesVelocity(FramePtr current_frame)
+{
+  const std::vector<int> & current_track_ids = current_frame->GetAllTrackIds();
+  const std::vector<int> & last_track_ids = _last_tracked_frame->GetAllTrackIds();
+
+  const Eigen::Matrix<float, 259, Eigen::Dynamic>& last_features = _last_tracked_frame->GetAllFeatures();
+  const Eigen::Matrix<float, 259, Eigen::Dynamic>& current_features = current_frame->GetAllFeatures();
+
+  std::vector<Eigen::Vector2f> & current_velocity = current_frame->GetAllVelocity();  
+
+  double delta_t = current_frame->GetTimestamp() - _last_tracked_frame->GetTimestamp();
+  std::cout << "[vel cal] delta_t = " << delta_t << std::endl;
+
+  int track_cnt = 0;
+
+  // violent match two consecutive frame features and calculate vel
+  std::cout << "[vel cal] current_track_ids.size() = " << current_track_ids.size() << std::endl;
+  for (int i = 0; i < current_track_ids.size(); i++) {
+    // std::cout << "++++ [vel cal] ++++" << std::endl;
+    // std::cout << "[vel cal] i = " << i << std::endl; 
+
+    if (current_track_ids[i] < 0) continue;
+
+    for (int j = 0; j < last_track_ids.size(); j++) {
+      if (current_track_ids[i] == last_track_ids[j]) {
+        Eigen::Vector2f current_feature, last_feature, vel;
+
+        current_feature = current_features.block<2, 1>(1, i);
+        last_feature = last_features.block<2, 1>(1, j); 
+        
+        vel = (current_feature - last_feature) / static_cast<float>(delta_t); 
+        current_velocity[i] = vel; 
+
+        track_cnt++;
+
+        // std::cout << "-------" << std::endl;
+        // std::cout << "[vel cal] track_id = " << current_track_ids[i] << std::endl; 
+        // std::cout << "[vel cal] current_feature = " << current_feature << std::endl; 
+        // std::cout << "[vel cal] last_feature = " << last_feature << std::endl; 
+        // std::cout << "[vel cal] vel = " << vel << "i = " << i << "track_cnt = " << track_cnt  << std::endl;
+
+        continue;
+      }
+    }
+
+  }
+
+  std::cout << "[vel cal] track_cnt = " << track_cnt  << std::endl;
+
+  return true;
+}
+
 
 int MapBuilder::TrackFrame(FramePtr ref_frame, FramePtr current_frame, std::vector<cv::DMatch>& matches, Preinteration& _preinteration){
   // line tracking
@@ -483,7 +569,11 @@ void MapBuilder::InsertKeyframe(FramePtr frame){
   }
 
   // insert keyframe to map
+#ifdef USING_TIME_COMPENSATION
+  _map->InsertKeyframe(frame, _td); 
+#else
   _map->InsertKeyframe(frame); 
+#endif
 
   _track_id = _map->UpdateFrameTrackIds(_track_id);
   _line_track_id = _map->UpdateFrameLineTrackIds(_line_track_id);
@@ -499,6 +589,7 @@ void MapBuilder::PublishFrame(FramePtr frame, cv::Mat& image, FrameType frame_ty
   double timestamp = frame->GetTimestamp();
   const std::vector<cv::KeyPoint>& keypoints = frame->GetAllKeypoints();
   const std::vector<Eigen::Vector4d>& lines = frame->GatAllLines();
+  const std::vector<Eigen::Vector2f>& velocity = frame->GetAllVelocity();
   const std::vector<std::map<int, double>>& points_on_lines = frame->GetPointsOnLines();
   std::vector<bool> inliers_feature_message;
   frame->GetInlierFlag(inliers_feature_message);
@@ -524,6 +615,7 @@ void MapBuilder::PublishFrame(FramePtr frame, cv::Mat& image, FrameType frame_ty
   feature_message->frame_id = frame->GetFrameId();
   feature_message->keyfrmae_id = key_image_id_pub;
   feature_message->keypoints = keypoints;
+  feature_message->velocity = velocity;
   feature_message->keyframe_keypoints = keyframe_keypoints_pub;
   feature_message->matches = matches;
   feature_message->fm_type = FeatureMessgaeType::VOFeature;
@@ -540,7 +632,8 @@ void MapBuilder::PublishFrame(FramePtr frame, cv::Mat& image, FrameType frame_ty
 
   if(frame_type==KeyFrame){
     std::vector<bool> inliers(keypoints.size(), true);
-    key_image_pub = DrawFeatures(image, keypoints, lines, false);
+    // key_image_pub = DrawFeatures(image, keypoints, lines, false);
+    key_image_pub = DrawFeatures(image, keypoints, velocity, lines, false);
     // key_image_id_pub = frame->GetFrameId();
     key_image_id_pub++;
     keyframe_keypoints_pub = frame->GetAllKeypoints();

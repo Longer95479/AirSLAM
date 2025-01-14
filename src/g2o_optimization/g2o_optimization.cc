@@ -20,7 +20,10 @@
 #include "g2o_optimization/vertex_line3d.h"
 #include "g2o_optimization/vertex_vi_pose.h"
 #include "g2o_optimization/edge_imu.h"
+
+#include "g2o_optimization/edge_project_point_td.h"
 #include "g2o_optimization/edge_project_point.h"
+
 #include "g2o_optimization/edge_project_line.h"
 #include "g2o_optimization/edge_relative_pose.h"
 
@@ -442,6 +445,392 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   }
 
 }
+
+void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d& lines, 
+    MapOfVelocity& velocities, MapOfBias& biases, std::vector<CameraPtr>& camera_list, 
+    VectorOfMonoPointConstraints& mono_point_constraints, VectorOfStereoPointConstraints& stereo_point_constraints, 
+    VectorOfMonoLineConstraints& mono_line_constraints, VectorOfStereoLineConstraints& stereo_line_constraints,
+    VectorOfIMUConstraints& imu_constraints, const Eigen::Matrix3d& Rwg, double& td, const OptimizationConfig& cfg){
+
+  std::cout << "---------LocalmapOptimization----------" << std::endl;
+  std::cout << "poses.size = " << poses.size() << std::endl;
+  std::cout << "points.size = " << points.size() << std::endl;
+  std::cout << "lines.size = " << lines.size() << std::endl;
+  std::cout << "velocities.size = " << velocities.size() << std::endl;
+  std::cout << "biases.size = " << biases.size() << std::endl;
+  std::cout << "mono_point_constraints.size = " << mono_point_constraints.size() << std::endl;
+  std::cout << "stereo_point_constraints.size = " << stereo_point_constraints.size() << std::endl;
+  std::cout << "mono_line_constraints.size = " << mono_line_constraints.size() << std::endl;
+  std::cout << "stereo_line_constraints.size = " << stereo_line_constraints.size() << std::endl;
+  std::cout << "imu_constraints.size = " << imu_constraints.size() << std::endl;
+  std::cout << "td = " << td << std::endl;
+  std::cout << "Rbc = " << std::endl << camera_list[0]->CameraToBody() << std::endl;
+  std::cout << "------------------------------------" << std::endl;
+
+  // 1. optimizer
+  g2o::SparseOptimizer optimizer;
+  auto linear_solver = g2o::make_unique<g2o::LinearSolverEigen<g2o::BlockSolverX::PoseMatrixType>>();
+  g2o::OptimizationAlgorithmLevenberg *solver = new g2o::OptimizationAlgorithmLevenberg(
+    g2o::make_unique<g2o::BlockSolverX>(std::move(linear_solver)));
+
+  optimizer.setVerbose(true);
+  optimizer.setAlgorithm(solver);
+
+  // 2. frame vertex
+  int max_frame_id = 0;
+  for(auto& kv : poses){
+    Eigen::Matrix4d Tcb = camera_list[kv.second.id_camera]->BodyToCamera();
+    Eigen::Matrix3d Rcw = kv.second.R.transpose();
+    Eigen::Vector3d tcw = -Rcw * kv.second.p;
+    VIPose vi_pose(Rcw, tcw, Tcb.block<3, 3>(0, 0), Tcb.block<3, 1>(0, 3));
+    VertexVIPose* frame_vertex = new VertexVIPose();
+    frame_vertex->setEstimate(vi_pose);
+    frame_vertex->setId(kv.first);
+    frame_vertex->setFixed(kv.second.fixed);
+    optimizer.addVertex(frame_vertex);
+    max_frame_id = std::max(max_frame_id, kv.first);
+  } 
+  max_frame_id++;
+
+  // 3. point vertex
+  int max_point_id = max_frame_id;
+  for(auto& kv : points){
+    g2o::VertexPointXYZ* point_vertex = new g2o::VertexPointXYZ();
+    point_vertex->setEstimate(kv.second.p);
+    int point_id = kv.first+max_frame_id;
+    point_vertex->setId((point_id));
+    max_point_id = std::max(max_point_id, point_id);
+    point_vertex->setMarginalized(true);
+    point_vertex->setFixed(kv.second.fixed);
+    optimizer.addVertex(point_vertex);
+  }
+  max_point_id++;
+
+  // 4. line vertex
+  int max_line_id = max_point_id;
+  for(auto& kv : lines){
+    g2o::VertexLine3D* line_vertex = new g2o::VertexLine3D();
+    line_vertex->setEstimateData(kv.second.line_3d);
+    int line_id = kv.first+max_point_id;
+    max_line_id = std::max(max_line_id, line_id);
+    line_vertex->setId(line_id);
+    line_vertex->setMarginalized(true);
+    line_vertex->setFixed(kv.second.fixed);
+    optimizer.addVertex(line_vertex);
+  }
+  max_line_id++;
+
+  // 5. velocity vertex
+  int max_velocity_id = max_line_id;
+  for(auto& kv : velocities){
+    VertexVelocity* velocity_vertex = new VertexVelocity(kv.second.velocity);
+    int velocity_id = kv.first + max_line_id;
+    max_velocity_id = std::max(max_velocity_id, velocity_id);
+    velocity_vertex->setId(velocity_id);
+    velocity_vertex->setFixed(kv.second.fixed);
+    optimizer.addVertex(velocity_vertex);
+  }
+  max_velocity_id++;
+
+  // 6. bias vertex
+  int max_bias_id = max_velocity_id;
+  for(auto& kv : biases){
+    VertexGyrBias* gyr_bias_vertex = new VertexGyrBias(kv.second.gyr_bias);
+    int gyr_bias_id = max_velocity_id + kv.first * 2;
+    gyr_bias_vertex->setId(gyr_bias_id);
+    gyr_bias_vertex->setFixed(kv.second.fixed);
+    optimizer.addVertex(gyr_bias_vertex);
+
+    VertexAccBias* acc_bias_vertex = new VertexAccBias(kv.second.acc_bias);
+    int acc_bias_id = max_velocity_id + kv.first * 2 + 1;
+    max_bias_id = std::max(max_bias_id, acc_bias_id);
+    acc_bias_vertex->setId(acc_bias_id);
+    acc_bias_vertex->setFixed(kv.second.fixed);
+    optimizer.addVertex(acc_bias_vertex);
+  }
+  max_bias_id++;
+
+  // 7. gravity direction vertex, will be fixed in this function.
+  VertexGDirection* gravity_direction_vertex = new VertexGDirection(Rwg);
+  gravity_direction_vertex->setId(max_bias_id);
+  gravity_direction_vertex->setFixed(true);
+  optimizer.addVertex(gravity_direction_vertex);
+
+  // 7.x time compensation
+  double id_td = max_bias_id + 1;
+  VertexTd* td_vertex = new VertexTd(td);
+  td_vertex->setId(id_td);
+  td_vertex->setFixed(false);
+  optimizer.addVertex(td_vertex);
+
+  // 8. point edges
+  std::vector<EdgeSE3ProjectPointTd*> mono_edges; 
+  mono_edges.reserve(mono_point_constraints.size());
+  std::vector<EdgeSE3ProjectStereoPointTd*> stereo_edges;
+  stereo_edges.reserve(stereo_point_constraints.size());
+  const double thHuberMonoPoint = sqrt(cfg.mono_point);
+  const double thHuberStereoPoint = sqrt(cfg.stereo_point);
+
+  // 8.1 mono point edges
+  for(MonoPointConstraintPtr& mpc : mono_point_constraints){
+    EdgeSE3ProjectPointTd* e = new EdgeSE3ProjectPointTd();
+    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex((mpc->id_point+max_frame_id))));
+    e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(mpc->id_pose)));
+    e->setVertex(2, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id_td)));
+    e->setMeasurement(mpc->keypoint);
+    e->setInformation(Eigen::Matrix2d::Identity());
+    g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+    e->setRobustKernel(rk);
+    rk->setDelta(thHuberMonoPoint);
+    e->fx = camera_list[mpc->id_camera]->Fx();
+    e->fy = camera_list[mpc->id_camera]->Fy();
+    e->cx = camera_list[mpc->id_camera]->Cx();
+    e->cy = camera_list[mpc->id_camera]->Cy();
+    e->velocity = mpc->velocity; 
+    e->td_used = mpc->td_used; 
+
+    optimizer.addEdge(e);
+    mono_edges.push_back(e);
+  }
+
+  // 8.2 stereo point edges
+  for(StereoPointConstraintPtr& spc : stereo_point_constraints){
+    EdgeSE3ProjectStereoPointTd* e = new EdgeSE3ProjectStereoPointTd();
+
+    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex((spc->id_point+max_frame_id))));
+    e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(spc->id_pose)));
+    e->setVertex(2, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id_td)));
+    e->setMeasurement(spc->keypoint);
+    e->setInformation(Eigen::Matrix3d::Identity());
+    g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+    e->setRobustKernel(rk);
+    rk->setDelta(thHuberStereoPoint);
+    e->fx = camera_list[spc->id_camera]->Fx();
+    e->fy = camera_list[spc->id_camera]->Fy();
+    e->cx = camera_list[spc->id_camera]->Cx();
+    e->cy = camera_list[spc->id_camera]->Cy();
+    e->bf = camera_list[spc->id_camera]->BF();
+    e->velocity = spc->velocity; 
+    e->td_used = spc->td_used; 
+
+    optimizer.addEdge(e);
+    stereo_edges.push_back(e);
+  }
+
+  // 9. line edges
+  std::vector<EdgeSE3ProjectLine*> mono_line_edges; 
+  mono_line_edges.reserve(mono_line_constraints.size());
+  std::vector<EdgeStereoSE3ProjectLine*> stereo_line_edges;
+  stereo_line_edges.reserve(stereo_line_constraints.size());
+  const double thHuberMonoLine = sqrt(cfg.mono_line);
+  const double thHuberStereoLine = sqrt(cfg.stereo_line);
+
+  // 9.1 mono line edges
+  for(MonoLineConstraintPtr& mlc : mono_line_constraints){
+    EdgeSE3ProjectLine* e = new EdgeSE3ProjectLine();
+    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex((mlc->id_line+max_point_id))));
+    e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(mlc->id_pose)));
+    e->setMeasurement(mlc->line_2d);
+    e->setInformation(Eigen::Matrix2d::Identity() * mlc->pixel_sigma);
+    g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+    e->setRobustKernel(rk);
+    rk->setDelta(thHuberMonoLine);
+    double fx = camera_list[mlc->id_camera]->Fx();
+    double fy = camera_list[mlc->id_camera]->Fy();
+    double cx = camera_list[mlc->id_camera]->Cx();
+    double cy = camera_list[mlc->id_camera]->Cy();
+    e->fx = fx;
+    e->fy = fy;
+    e->Kv << -fy * cx, -fx * cy, fx * fy;
+    optimizer.addEdge(e);
+    mono_line_edges.push_back(e);
+  }
+
+  // 9.2 stereo line edges
+  for(StereoLineConstraintPtr& slc : stereo_line_constraints){
+    EdgeStereoSE3ProjectLine* e = new EdgeStereoSE3ProjectLine();
+    e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex((slc->id_line+max_point_id))));
+    e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(slc->id_pose)));
+    e->setMeasurement(slc->line_2d);
+    e->setInformation(Eigen::Matrix4d::Identity() * slc->pixel_sigma);
+    g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+    e->setRobustKernel(rk);
+    rk->setDelta(thHuberStereoLine);
+    double fx = camera_list[slc->id_camera]->Fx();
+    double fy = camera_list[slc->id_camera]->Fy();
+    double cx = camera_list[slc->id_camera]->Cx();
+    double cy = camera_list[slc->id_camera]->Cy();
+    double bf = camera_list[slc->id_camera]->BF();
+    e->fx = fx;
+    e->fy = fy;
+    e->b = bf / fx;
+    e->Kv << -fy * cx, -fx * cy, fx * fy;
+    optimizer.addEdge(e);
+    stereo_line_edges.push_back(e);
+  }
+
+  // 10 imu edges
+  std::vector<EdgeIMU*> imu_edges; 
+  imu_edges.reserve(imu_constraints.size());
+  std::vector<EdgeGyr*> gyr_edges;
+  std::vector<EdgeAcc*> acc_edges;
+
+  for(IMUConstraintPtr& ipc : imu_constraints){
+    // 10.1 pose and velocity edges
+    EdgeIMU* e_imu = new EdgeIMU(ipc->preinteration);
+    
+    g2o::HyperGraph::Vertex *vp1 = optimizer.vertex(ipc->id_pose1);
+    g2o::HyperGraph::Vertex *vv1 = optimizer.vertex(max_line_id + ipc->id_pose1);
+    g2o::HyperGraph::Vertex *vg1 = optimizer.vertex(max_velocity_id + ipc->id_pose1 * 2);
+    g2o::HyperGraph::Vertex *va1 = optimizer.vertex(max_velocity_id + ipc->id_pose1 * 2 + 1);
+    g2o::HyperGraph::Vertex *vp2 = optimizer.vertex(ipc->id_pose2);
+    g2o::HyperGraph::Vertex *vv2 = optimizer.vertex(max_line_id + ipc->id_pose2);
+    g2o::HyperGraph::Vertex *vg2 = optimizer.vertex(max_velocity_id + ipc->id_pose2 * 2);
+    g2o::HyperGraph::Vertex *va2 = optimizer.vertex(max_velocity_id + ipc->id_pose2 * 2 + 1);
+    g2o::HyperGraph::Vertex *vG = optimizer.vertex(max_bias_id);
+    if(!vp1 || !vv1 || !vg1 || !va1 || !vp2 || !vv2 || !vg2 || !va2  || !vG) continue;
+
+    e_imu->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(vp1));
+    e_imu->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(vv1));
+    e_imu->setVertex(2, dynamic_cast<g2o::OptimizableGraph::Vertex *>(vg2));
+    e_imu->setVertex(3, dynamic_cast<g2o::OptimizableGraph::Vertex *>(va2));
+    e_imu->setVertex(4, dynamic_cast<g2o::OptimizableGraph::Vertex *>(vp2));
+    e_imu->setVertex(5, dynamic_cast<g2o::OptimizableGraph::Vertex *>(vv2));
+    e_imu->setVertex(6, dynamic_cast<g2o::OptimizableGraph::Vertex *>(vG));
+
+    if(poses[ipc->id_pose1].fixed || poses[ipc->id_pose2].fixed || false){
+      g2o::RobustKernelHuber *rki = new g2o::RobustKernelHuber;
+      e_imu->setRobustKernel(rki);
+      e_imu->setInformation(e_imu->information() * 1e-2);
+      rki->setDelta(sqrt(16.92));
+    }
+    optimizer.addEdge(e_imu);
+    imu_edges.push_back(e_imu);
+
+    // bias edges
+    EdgeGyr* e_gyr = new EdgeGyr();
+    EdgeAcc* e_acc = new EdgeAcc();
+
+    e_gyr->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(vg1));
+    e_acc->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex *>(va1));
+    e_gyr->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(vg2));
+    e_acc->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex *>(va2));
+
+    Eigen::Matrix3d info_g = ipc->preinteration->Cov.block<3,3>(9,9).inverse();
+    Eigen::Matrix3d info_a = ipc->preinteration->Cov.block<3,3>(12,12).inverse();
+    e_gyr->setInformation(info_g);
+    e_acc->setInformation(info_a);
+
+    optimizer.addEdge(e_gyr);
+    optimizer.addEdge(e_acc);
+    gyr_edges.push_back(e_gyr);
+    acc_edges.push_back(e_acc);
+  }
+
+  // solve 
+  optimizer.initializeOptimization();
+  optimizer.optimize(5);
+
+  // check inlier observations
+  for(size_t i=0; i < mono_edges.size(); i++){
+    EdgeSE3ProjectPointTd* e = mono_edges[i];
+    if(e->chi2() > cfg.mono_point || !e->isDepthPositive()){
+      e->setLevel(1);
+    }
+    e->setRobustKernel(0);
+  }
+
+  for(size_t i=0; i < stereo_edges.size(); i++){    
+    EdgeSE3ProjectStereoPointTd* e = stereo_edges[i];
+    if(e->chi2() > cfg.stereo_point || !e->isDepthPositive()){
+        e->setLevel(1);
+    }
+    e->setRobustKernel(0);
+  }
+
+  for(size_t i=0; i < mono_line_edges.size(); i++){
+    EdgeSE3ProjectLine* e = mono_line_edges[i];
+    if(e->chi2() > cfg.mono_line){
+      e->setLevel(1);
+    }
+    e->setRobustKernel(0);
+  }
+
+  for(size_t i=0; i < stereo_line_edges.size(); i++){    
+    EdgeStereoSE3ProjectLine* e = stereo_line_edges[i];
+    if(e->chi2() > cfg.stereo_line){
+        e->setLevel(1);
+    }
+    e->setRobustKernel(0);
+  }
+
+  // optimize again without the outliers
+  optimizer.initializeOptimization(0);
+  optimizer.optimize(15);
+
+
+  // check inlier observations     
+  for(size_t i = 0; i < mono_edges.size(); i++){
+    EdgeSE3ProjectPointTd* e = mono_edges[i];
+    mono_point_constraints[i]->inlier = (e->chi2() <= cfg.mono_point && e->isDepthPositive());
+  }
+
+  for(size_t i = 0; i < stereo_edges.size(); i++){    
+    EdgeSE3ProjectStereoPointTd* e = stereo_edges[i];
+    stereo_point_constraints[i]->inlier = (e->chi2() <= cfg.stereo_point && e->isDepthPositive());
+  }
+
+  for(size_t i = 0; i < mono_line_edges.size(); i++){
+    EdgeSE3ProjectLine* e = mono_line_edges[i];
+    mono_line_constraints[i]->inlier = (e->chi2() <= cfg.mono_line);
+  }
+
+  for(size_t i = 0; i < stereo_line_edges.size(); i++){    
+    EdgeStereoSE3ProjectLine* e = stereo_line_edges[i];
+    stereo_line_constraints[i]->inlier = (e->chi2() <= cfg.stereo_line);
+  }
+
+  // recover optimized data
+
+  // keyframes
+  for(MapOfPoses::iterator it = poses.begin(); it != poses.end(); ++it){
+    VertexVIPose* frame_vertex = static_cast<VertexVIPose*>(optimizer.vertex(it->first));
+    g2o::SE3Quat SE3quat = frame_vertex->estimate().Tcw.inverse();
+    it->second.p = SE3quat.translation();
+    it->second.R = SE3quat.rotation().toRotationMatrix();
+  }
+
+  // points
+  for(MapOfPoints3d::iterator it = points.begin(); it != points.end(); ++it){
+    g2o::VertexPointXYZ* point_vertex = static_cast<g2o::VertexPointXYZ*>(optimizer.vertex(it->first+max_frame_id));
+    it->second.p = point_vertex->estimate();
+  }
+
+  // lines
+  for(MapOfLine3d::iterator it = lines.begin(); it != lines.end(); ++it){
+    g2o::VertexLine3D* line_vertex = static_cast<g2o::VertexLine3D*>(optimizer.vertex(it->first+max_point_id));
+    it->second.line_3d = line_vertex->estimate();
+  } 
+
+  // velocities
+  for(MapOfVelocity::iterator it = velocities.begin(); it != velocities.end(); it++){
+    VertexVelocity* velocity_vertex = static_cast<VertexVelocity*>(optimizer.vertex(it->first+max_line_id));
+    it->second.velocity = velocity_vertex->estimate();
+  }
+
+  // biases 
+  for(MapOfBias::iterator it = biases.begin(); it != biases.end(); it++){
+    VertexGyrBias* gyr_bias_vertex = static_cast<VertexGyrBias*>(optimizer.vertex(it->first*2+max_velocity_id));
+    VertexAccBias* acc_bias_vertex = static_cast<VertexAccBias*>(optimizer.vertex(it->first*2+max_velocity_id+1));
+    it->second.gyr_bias = gyr_bias_vertex->estimate();
+    it->second.acc_bias = acc_bias_vertex->estimate();
+  }
+
+  // td
+  td = td_vertex->estimate();
+
+}
+
 
 int FrameOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d& lines,
     MapOfVelocity& velocities, MapOfBias& biases, std::vector<CameraPtr>& camera_list, 

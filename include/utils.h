@@ -70,6 +70,9 @@ cv::Mat DrawFeatures(const cv::Mat& image, const std::vector<cv::KeyPoint>& keyp
 cv::Mat DrawFeatures(const cv::Mat& image, const std::vector<cv::KeyPoint>& keypoints, 
     const std::vector<bool>& inliers, const std::vector<Eigen::Vector4d>& lines, 
     const std::vector<int>& line_track_ids, const std::vector<std::map<int, double>>& points_on_lines);
+cv::Mat DrawFeatures(const cv::Mat& image, const std::vector<cv::KeyPoint>& keypoints, 
+    const std::vector<Eigen::Vector2f>& velocity, 
+    const std::vector<Eigen::Vector4d>& lines, bool draw_on_one);
 cv::Mat DrawMatches(const cv::Mat& ref_image, const cv::Mat& image, const std::vector<cv::KeyPoint>& ref_kpts, 
     const std::vector<cv::KeyPoint>& kpts, const std::vector<cv::DMatch>& matches);
 
@@ -98,6 +101,9 @@ void SaveTumTrajectoryToFile(const std::string file_path,
 
 void SaveTumTrajectoryToFile(const std::string file_path, 
     const std::vector<std::pair<std::string, Eigen::Matrix4d>>& trajectory);
+
+bool saveTdToCSV(const std::vector<std::pair<double, double>>& tsp_tds, 
+    const std::string& filename);
 
 // boost serialization
 template <class Archive>
