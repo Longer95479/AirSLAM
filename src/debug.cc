@@ -114,6 +114,75 @@ void SaveLineDetectionResult(cv::Mat& image, std::vector<Eigen::Vector4d>& lines
   cv::imwrite(save_image_path, img_color);
 }
 
+void SaveLineRegularityEncodeResult(cv::Mat& image, 
+      const std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>>& lines_inliers,
+      const std::map<int, std::vector<Eigen::Vector4d>>& DDs_on_image,
+      std::string save_root, std::string idx)
+{
+  cv::Mat img_color;
+  cv::cvtColor(image, img_color, cv::COLOR_GRAY2RGB);
+  std::string line_save_dir = ConcatenateFolderAndFileName(save_root, "regularity_encoder");
+  MakeDir(line_save_dir); 
+  std::string line_save_image_name = "regularity_encoder_" + idx + ".jpg";
+  std::string save_image_path = ConcatenateFolderAndFileName(line_save_dir, line_save_image_name);
+
+  for (auto& type_DDs: DDs_on_image) {
+    int type = type_DDs.first;
+    std::vector<Eigen::Vector4d> DDs = type_DDs.second;
+
+    cv::Scalar color;
+    cv::Scalar red(0, 0, 255);
+    cv::Scalar green(0, 255, 0);
+    cv::Scalar blue(255, 0, 0);
+    if (type == 0) // vertical
+      color = red;
+    else if (type == 1) // horizontal
+      color = green;
+    else if (type == 2) // slopping
+      color = blue;
+
+    for (auto& DD: DDs) {
+      cv::line(img_color, cv::Point2i((int)(DD(0)+0.5), (int)(DD(1)+0.5)), 
+          cv::Point2i((int)(DD(2)+0.5), (int)(DD(3)+0.5)), color, 2);
+    }
+  }
+
+  for (auto& type_DDid_lineid_line: lines_inliers) {
+    int type = type_DDid_lineid_line.first;
+    std::map<int, std::map<int, Eigen::Vector4d>> DDid_lineid_lines = type_DDid_lineid_line.second;
+
+    cv::Scalar color;
+    cv::Scalar red(0, 0, 250);
+    cv::Scalar green(0, 250, 0);
+    cv::Scalar blue(250, 0, 0);
+    if (type == 0) // vertical
+      color = red;
+    else if (type == 1) // horizontal
+      color = green;
+    else if (type == 2) // slopping
+      color = blue;
+
+    for (auto& DDid_lineid_line: DDid_lineid_lines) {
+      int DDid = DDid_lineid_line.first;
+      std::map<int, Eigen::Vector4d> lineid_lines = DDid_lineid_line.second;
+      for (auto& lineid_line: lineid_lines) {
+        Eigen::Vector4d line = lineid_line.second;
+        Eigen::Vector2d vanish_point; 
+
+        vanish_point = DDs_on_image.at(type)[DDid].block<2, 1>(2, 0);
+
+        cv::line(img_color, cv::Point2i((int)(line(0)+0.5), (int)(line(1)+0.5)), 
+            cv::Point2i((int)(vanish_point(0)+0.5), (int)(vanish_point(1)+0.5)), cv::Scalar(150, 150, 150), 1); 
+
+        cv::line(img_color, cv::Point2i((int)(line(0)+0.5), (int)(line(1)+0.5)), 
+            cv::Point2i((int)(line(2)+0.5), (int)(line(3)+0.5)), color, 1.5);
+      } 
+    }
+  }
+  
+  cv::imwrite(save_image_path, img_color);
+}
+
 void SavePointLineRelation(cv::Mat& image, std::vector<Eigen::Vector4d>& lines, Eigen::Matrix2Xd& points, 
     std::vector<std::map<int, double>>& relation,  std::string save_root, std::string idx){
   cv::Mat img_color;

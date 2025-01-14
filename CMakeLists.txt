@@ -90,6 +90,7 @@ add_library(${PROJECT_NAME}_lib SHARED
   src/map_user.cc
   src/timer.cc
   src/debug.cc
+  src/regularity_encoder.cc
 )
 
 target_link_libraries(${PROJECT_NAME}_lib
@@ -121,3 +122,7 @@ target_link_libraries(relocalization ${PROJECT_NAME}_lib ${catkin_LIBRARIES})
 
 add_executable(test_feature demo/test_feature.cpp)
 target_link_libraries(test_feature ${PROJECT_NAME}_lib ${catkin_LIBRARIES})
+
+add_executable(test_regularity_encoder demo/test_regularity_encoder.cpp)
+target_link_libraries(test_regularity_encoder ${PROJECT_NAME}_lib ${catkin_LIBRARIES})
+

@@ -33,6 +33,11 @@ void SaveTrackingResult(cv::Mat& last_image, cv::Mat& image, FramePtr last_frame
 void SaveLineDetectionResult(cv::Mat& image, std::vector<Eigen::Vector4d>& lines, std::string save_root, std::string idx);
 void SaveLineDetectionResult(cv::Mat& image, std::vector<Eigen::Vector4d>& lines, std::vector<Eigen::Vector2i>& junctions, std::string save_root, std::string idx);
 
+void SaveLineRegularityEncodeResult(cv::Mat& image, 
+      const std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>>& lines_inliers,
+      const std::map<int, std::vector<Eigen::Vector4d>>& DDs_on_image,
+      std::string save_root, std::string idx);
+
 void SavePointLineRelation(cv::Mat& image, std::vector<Eigen::Vector4d>& lines, Eigen::Matrix2Xd& points, 
     std::vector<std::map<int, double>>& relation,  std::string save_root, std::string idx);
 
