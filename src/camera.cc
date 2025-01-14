@@ -33,7 +33,7 @@ Camera::Camera(const std::string& camera_file){
   ReadCameraNode(cam0_node, K0, D0, Tbc0);
   ReadCameraNode(cam1_node, K1, D1, Tbc1);
 
-  Eigen::Matrix4d Tc1c0 = Tbc1.inverse() * Tbc0;
+  _Tc1c0 = Tbc1.inverse() * Tbc0;
   _Tbc = Tbc0;
   _Tcb = _Tbc.inverse();
 
@@ -46,12 +46,12 @@ Camera::Camera(const std::string& camera_file){
     _fx_inv = 1.0 / _fx;
     _fy_inv = 1.0 / _fy;
 
-    _bf = _fx * std::abs(Tc1c0(0, 3));
+    _bf = _fx * std::abs(_Tc1c0(0, 3));
     _max_x_diff = _bf / _depth_lower_thr;
     _min_x_diff = _bf / _depth_upper_thr;
   }else{
-    Eigen::Matrix3d R10_eigen = Tc1c0.block<3, 3>(0, 0);
-    Eigen::Vector3d t10_eigen = Tc1c0.block<3, 1>(0, 3);
+    Eigen::Matrix3d R10_eigen = _Tc1c0.block<3, 3>(0, 0);
+    Eigen::Vector3d t10_eigen = _Tc1c0.block<3, 1>(0, 3);
     cv::eigen2cv(R10_eigen, R10);
     cv::eigen2cv(t10_eigen, t10);
 
@@ -241,6 +241,22 @@ Eigen::Matrix4d Camera::BodyToCamera(){
   return _Tcb;
 }
 
+Eigen::Matrix4d Camera::Camera0ToCamera1(){
+  return _Tc1c0;
+}
+
+Eigen::Matrix4d Camera::SetCameraToBody(const Eigen::Matrix3d& Rbc, const Eigen::Vector3d& tbc){
+  _Tbc.block<3, 3>(0, 0) = Rbc;
+  _Tbc.block<3, 1>(0, 3) = tbc;
+  return _Tbc;
+}
+
+Eigen::Matrix4d Camera::SetBodyToCamera(const Eigen::Matrix3d& Rcb, const Eigen::Vector3d& tcb){
+  _Tcb.block<3, 3>(0, 0) = Rcb;
+  _Tcb.block<3, 1>(0, 3) = tcb;
+  return _Tcb;
+}
+
 double Camera::GyrNoise(){
   return _gyr_noise;
 }
@@ -278,3 +294,4 @@ bool Camera::BackProjectStereo(const Eigen::Vector3d& keypoint, Eigen::Vector3d&
   output = output * d;
   return true;
 }
+

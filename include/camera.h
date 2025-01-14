@@ -43,6 +43,9 @@ public:
   double MaxYDiff();
   Eigen::Matrix4d CameraToBody();
   Eigen::Matrix4d BodyToCamera();
+  Eigen::Matrix4d Camera0ToCamera1();
+  Eigen::Matrix4d SetCameraToBody(const Eigen::Matrix3d& Rbc, const Eigen::Vector3d& tbc);
+  Eigen::Matrix4d SetBodyToCamera(const Eigen::Matrix3d& Rcb, const Eigen::Vector3d& tcb);
   double GyrNoise();
   double AccNoise();
   double GyrWalk();
@@ -152,6 +155,7 @@ private:
   // IMU related configs
   int _use_imu;
   Eigen::Matrix4d _Tbc, _Tcb;
+  Eigen::Matrix4d _Tc1c0;
   double _gyr_noise, _acc_noise, _gyr_walk, _acc_walk;
   double _imu_frequency;
 };

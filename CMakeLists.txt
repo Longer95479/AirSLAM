@@ -56,6 +56,7 @@ include_directories(
 add_library(${PROJECT_NAME}_lib SHARED
   src/g2o_optimization/vertex_line3d.cc
   src/g2o_optimization/vertex_vi_pose.cc
+  src/g2o_optimization/vertex_extrinsic.cc
   src/g2o_optimization/vertex_imu.cc
   src/g2o_optimization/vertex_td.cc
   src/g2o_optimization/edge_project_point.cc
@@ -63,6 +64,7 @@ add_library(${PROJECT_NAME}_lib SHARED
   src/g2o_optimization/edge_project_line.cc
   src/g2o_optimization/edge_imu.cc
   src/g2o_optimization/edge_relative_pose.cc
+  src/g2o_optimization/edge_extrinsic_prior.cc
   src/g2o_optimization/g2o_optimization.cc
   src/bow/FSuperpoint.cc
   src/bow/database.cc

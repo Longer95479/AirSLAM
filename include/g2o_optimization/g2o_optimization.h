@@ -2,6 +2,7 @@
 #define G2O_OPTIMIZATION_H_
  
 #define USING_TIME_COMPENSATION
+#define OPEN_EXTRINSIC_ESTIMATE
 
 #include <vector>
 

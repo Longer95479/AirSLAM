@@ -370,3 +370,34 @@ bool saveTdToCSV(const std::vector<std::pair<double, double>>& tsp_tds, const st
 
 }
 
+bool saveExtrinsicToFile(const Eigen::Matrix4d& Tc1c0, const Eigen::Matrix4d& Tbc0, const std::string& filename)
+{
+  Eigen::Matrix4d Tbc1 = Tbc0 * Tc1c0.inverse();
+  std::ofstream file(filename);
+
+  if (file.is_open()) {
+    file << "Tbc0:\n";
+    for (int i = 0; i < 4; i++) {
+      file << "- [" << Tbc0(i, 0) << ", ";
+      file << Tbc0(i, 1) << ", ";
+      file << Tbc0(i, 2) << ", ";
+      file << Tbc0(i, 3) << "]\n";
+    }
+    file << "Tbc1:\n";
+    for (int i = 0; i < 4; i++) {
+      file << "- [" << Tbc0(i, 0) << ", ";
+      file << Tbc1(i, 1) << ", ";
+      file << Tbc1(i, 2) << ", ";
+      file << Tbc1(i, 3) << "]\n";
+    }
+    file.close();
+    std::cout << "data have been saved to " << filename << std::endl;
+    return true;
+  }
+  else {
+    std::cerr << "Can't open files" << filename << std::endl;
+    return false;
+  }
+
+}
+

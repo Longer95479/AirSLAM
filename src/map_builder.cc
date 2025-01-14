@@ -234,6 +234,10 @@ void MapBuilder::TrackingThread(){
     PublishFrame(frame, image_left_rect, frame_type, matches);
   }  
 
+  Eigen::Matrix4d Tc1c0 = _camera->Camera0ToCamera1();
+  Eigen::Matrix4d Tbc0 = _camera->CameraToBody();
+  saveExtrinsicToFile(Tc1c0, Tbc0, "/workspace/extrinsic.txt");
+
   saveTdToCSV(tsp_tds, "/workspace/timestamp_td.csv");
 
   _stop_mutex.lock();

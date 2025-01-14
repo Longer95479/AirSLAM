@@ -42,6 +42,7 @@ typedef Eigen::Matrix<double, 6, 1> Vector6d;
 typedef Eigen::Matrix<double, 8, 1> Vector8d;
 typedef Eigen::Matrix<double, 9, 1> Vector9d;
 typedef Eigen::Matrix<double, 8, 8> Matrix8d;
+typedef Eigen::Matrix<double, 6, 6> Matrix6d;
 typedef Eigen::Matrix<double, 9, 9> Matrix9d;
 typedef Eigen::Matrix<double, 15, 15> Matrix15d;
 
@@ -103,6 +104,9 @@ void SaveTumTrajectoryToFile(const std::string file_path,
     const std::vector<std::pair<std::string, Eigen::Matrix4d>>& trajectory);
 
 bool saveTdToCSV(const std::vector<std::pair<double, double>>& tsp_tds, 
+    const std::string& filename);
+
+bool saveExtrinsicToFile(const Eigen::Matrix4d& Tc1c0, const Eigen::Matrix4d& Tbc0,
     const std::string& filename);
 
 // boost serialization

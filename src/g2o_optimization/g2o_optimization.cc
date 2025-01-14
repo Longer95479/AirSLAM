@@ -19,10 +19,12 @@
 #include "g2o_optimization/vertex_imu.h"
 #include "g2o_optimization/vertex_line3d.h"
 #include "g2o_optimization/vertex_vi_pose.h"
+#include "g2o_optimization/vertex_extrinsic.h"
 #include "g2o_optimization/edge_imu.h"
 
 #include "g2o_optimization/edge_project_point_td.h"
 #include "g2o_optimization/edge_project_point.h"
+#include "g2o_optimization/edge_extrinsic_prior.h"
 
 #include "g2o_optimization/edge_project_line.h"
 #include "g2o_optimization/edge_relative_pose.h"
@@ -186,7 +188,7 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   gravity_direction_vertex->setId(max_bias_id);
   gravity_direction_vertex->setFixed(true);
   optimizer.addVertex(gravity_direction_vertex);
-  
+
 
   // 8. point edges
   std::vector<EdgeSE3ProjectPoint*> mono_edges; 
@@ -563,6 +565,33 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   td_vertex->setFixed(false);
   optimizer.addVertex(td_vertex);
 
+#ifdef OPEN_EXTRINSIC_ESTIMATE
+  // 7.y extrinsic
+  double id_ext = id_td + 1;
+  Eigen::Matrix4d Tcb = camera_list[0]->BodyToCamera();
+  Extrinsic extrinsic(Tcb.block<3, 3>(0, 0), Tcb.block<3, 1>(0, 3));
+  VertexExtrinsic* extrinsic_vertex = new VertexExtrinsic();
+  extrinsic_vertex->setEstimate(extrinsic);
+  extrinsic_vertex->setId(id_ext);
+  std::cout << "max_frame_id = "  << max_frame_id << std::endl;
+  if (max_frame_id > 0)
+    extrinsic_vertex->setFixed(false);
+  else
+    extrinsic_vertex->setFixed(true);
+  optimizer.addVertex(extrinsic_vertex);
+
+  // 7.z extrinsic edges
+  EdgeExtrinsicPrior* extrinsic_prior_edge = new EdgeExtrinsicPrior(Tcb.block<3, 3>(0, 0), Tcb.block<3, 1>(0, 3));
+  extrinsic_prior_edge->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id_ext)));
+  // g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+  // e->setRobustKernel(rk);
+  // const double thHuberMonoPoint = sqrt(cfg.mono_point);
+  // rk->setDelta(thHuberMonoPoint);
+  // e->setInformation(Matrix6d::Identity() * mono_point_constraints.size());
+  extrinsic_prior_edge->setInformation(1e7 * Matrix6d::Identity());
+  optimizer.addEdge(extrinsic_prior_edge);
+#endif
+
   // 8. point edges
   std::vector<EdgeSE3ProjectPointTd*> mono_edges; 
   mono_edges.reserve(mono_point_constraints.size());
@@ -577,6 +606,9 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
     e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex((mpc->id_point+max_frame_id))));
     e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(mpc->id_pose)));
     e->setVertex(2, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id_td)));
+#ifdef OPEN_EXTRINSIC_ESTIMATE
+    e->setVertex(3, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id_ext)));
+#endif
     e->setMeasurement(mpc->keypoint);
     e->setInformation(Eigen::Matrix2d::Identity());
     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
@@ -600,6 +632,9 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
     e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex((spc->id_point+max_frame_id))));
     e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(spc->id_pose)));
     e->setVertex(2, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id_td)));
+#ifdef OPEN_EXTRINSIC_ESTIMATE
+    e->setVertex(3, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id_ext)));
+#endif
     e->setMeasurement(spc->keypoint);
     e->setInformation(Eigen::Matrix3d::Identity());
     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
@@ -791,13 +826,33 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   }
 
   // recover optimized data
+ 
+#ifdef OPEN_EXTRINSIC_ESTIMATE
+  // extrinsic
+  Eigen::Matrix3d Rcb = extrinsic_vertex->estimate().Rcb;
+  Eigen::Vector3d tcb = extrinsic_vertex->estimate().tcb;
+  Eigen::Matrix3d Rbc = Rcb.transpose();
+  Eigen::Vector3d tbc = -Rbc * tcb;
+
+  camera_list[0]->SetBodyToCamera(Rcb, tcb);
+  camera_list[0]->SetCameraToBody(Rbc, tbc);
+
+  std::cout << "extrinsic prior edge chi2 = " << extrinsic_prior_edge->chi2() << std::endl;
+#endif
 
   // keyframes
   for(MapOfPoses::iterator it = poses.begin(); it != poses.end(); ++it){
     VertexVIPose* frame_vertex = static_cast<VertexVIPose*>(optimizer.vertex(it->first));
+#ifdef OPEN_EXTRINSIC_ESTIMATE
+    // TODO can't modifed const ret
+    // frame_vertex->estimate().SetExtrinsic(Rcb, tcb);
+    it->second.p = frame_vertex->estimate().twb + frame_vertex->estimate().Rwb * tbc; 
+    it->second.R = frame_vertex->estimate().Rwb * Rbc;
+#else
     g2o::SE3Quat SE3quat = frame_vertex->estimate().Tcw.inverse();
     it->second.p = SE3quat.translation();
     it->second.R = SE3quat.rotation().toRotationMatrix();
+#endif
   }
 
   // points
