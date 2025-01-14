@@ -36,10 +36,18 @@ FeatureDetector::FeatureDetector(const PLNetConfig& plnet_config) : _plnet_confi
 bool FeatureDetector::Detect(cv::Mat& image, Eigen::Matrix<float, 259, Eigen::Dynamic> &features){
   bool good_infer = false;
   if(_plnet_config.use_superpoint){
+    auto before_infer = std::chrono::high_resolution_clock::now();   
     good_infer = _superpoint->infer(image, features);
+    auto after_infer = std::chrono::high_resolution_clock::now();
+    auto cost_time = std::chrono::duration_cast<std::chrono::milliseconds>(after_infer - before_infer).count();
+    std::cout << "Superpoint Processinh Time: " << cost_time << " ms." << std::endl;
   }else{
+    auto before_infer = std::chrono::high_resolution_clock::now();   
     std::vector<Eigen::Vector4d> lines;
     good_infer = Detect(image, features, lines);
+    auto after_infer = std::chrono::high_resolution_clock::now();
+    auto cost_time = std::chrono::duration_cast<std::chrono::milliseconds>(after_infer - before_infer).count();
+    std::cout << "PLnet Processinh Time: " << cost_time << " ms." << std::endl;
   }
 
 
