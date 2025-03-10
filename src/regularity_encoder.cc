@@ -79,18 +79,20 @@ bool RegularityEncoder::encode(const std::vector<Eigen::Vector4d>& lines,
       max_inlier_num = inlier_num;
 
       // DEBUG
+      std::cout << "-------------------------------" << std::endl;
       std::cout << "[Regularity Encoder Debug Info]" << std::endl;
       std::cout << "iters: " << i << std::endl;
-      std::cout << "--------------------" << std::endl;
-      std::cout << "hDD_num: " << _horizontal_DDs.size() << ","  << _horizontal_inliers.size() << std::endl;
-      std::cout << "sDD_num: " << _slopping_DDs.size() << std::endl;
-      std::cout << "--------------------" << std::endl;
+      std::cout << std::endl;
+      std::cout << "line_num: " << lines.size() << std::endl;
       std::cout << "max_inlier_num: " << max_inlier_num << std::endl;
       std::cout << "inlier_num: " << inlier_num << std::endl;
-      std::cout << "vertical_inlier_num: " << vertical_inlier_num << std::endl;
-      std::cout << "horizontal_inlier_num: " << horizontal_inlier_num << std::endl;
-      std::cout << "slopping_inlier_num: " << slopping_inlier_num << std::endl;
-      std::cout << "--------------------" << std::endl;
+      std::cout << "- vertical_inlier_num: " << vertical_inlier_num << std::endl;
+      std::cout << "- horizontal_inlier_num: " << horizontal_inlier_num << std::endl;
+      std::cout << "- slopping_inlier_num: " << slopping_inlier_num << std::endl;
+      std::cout << std::endl;
+      std::cout << "hDD_num: " << _horizontal_DDs.size() << std::endl;
+      std::cout << "sDD_num: " << _slopping_DDs.size() << std::endl;
+      std::cout << "-------------------------------" << std::endl;
       // DEBUG END
 
 
@@ -107,6 +109,91 @@ bool RegularityEncoder::encode(const std::vector<Eigen::Vector4d>& lines,
   }
 
   reset();
+
+  return true;
+}
+
+
+/**
+ *  Gravity direction version
+ *
+ *  map of DDs: 0 for vertical, 1 for horizontal, 2 for slopping
+ *
+ *  map of inliers: 
+ *    - 1st int: 0 for vertical, 1 for horizontal, 2 for slopping. 
+ *    - 2nd int: id of a DD in a specific type. 
+ *               e.g. only one vertical DD, so id is only 0
+ *    - 3rd int: line id
+ *
+ */
+bool RegularityEncoder::encode(const std::vector<Eigen::Vector4d>& lines, 
+      const Eigen::Vector3d& g_dir,
+      std::map<int, std::vector<Eigen::Vector3d>>& DDs, 
+      std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers) 
+{
+  if (!computeTheNormalsOfProjectionPlane(lines, _normals_of_projection_plane))
+    return false;
+
+  int max_inlier_num = 0;
+  int inlier_num = 0, vertical_inlier_num = 0, horizontal_inlier_num = 0, slopping_inlier_num = 0;
+
+  Eigen::Vector3d g_dir_normed = g_dir / g_dir.norm();
+  _vertical_DD = g_dir_normed;
+
+  // std::srand((unsigned)time(NULL));
+
+  // DEBUG
+  // std::cout << "iters: " << i << std::endl;
+  std::map<int, Eigen::Vector3d> normals_of_projection_plane = _normals_of_projection_plane;
+
+  vertical_inlier_num = estimateVerticalDDsAndInliers(normals_of_projection_plane, 
+                                                      _vertical_DD, _vertical_inliers);
+
+  horizontal_inlier_num = estimateHorizontalDDsAndInliers(normals_of_projection_plane, 
+                                                          _vertical_inliers, _vertical_DD,
+                                                          _horizontal_DDs, _horizontal_inliers);
+
+  // slopping_inlier_num = estimateSloppingDDsAndInliers(normals_of_projection_plane, _horizontal_inliers[0], 
+  //                                                     _slopping_DDs, _slopping_inliers);
+
+  inlier_num = vertical_inlier_num + horizontal_inlier_num + slopping_inlier_num; 
+    
+  DDs.clear();
+  inliers.clear();
+
+  DDs[0].push_back(_vertical_DD);
+  DDs[1] = _horizontal_DDs; 
+  DDs[2] = _slopping_DDs;
+
+  inliers[0].insert(std::make_pair(0, _vertical_inliers));
+  inliers[1] = _horizontal_inliers;
+  inliers[2] = _slopping_inliers;
+
+  // DEBUG
+  std::cout << "-------------------------------" << std::endl;
+  std::cout << "[Regularity Encoder Debug Info]" << std::endl;
+  std::cout << "line_num: " << lines.size() << std::endl;
+  std::cout << "inlier_num: " << inlier_num << std::endl;
+  std::cout << "- vertical_inlier_num: " << vertical_inlier_num << std::endl;
+  std::cout << "- horizontal_inlier_num: " << horizontal_inlier_num << std::endl;
+  std::cout << "- slopping_inlier_num: " << slopping_inlier_num << std::endl;
+  std::cout << std::endl;
+  std::cout << "hDD_num: " << _horizontal_DDs.size() << std::endl;
+  std::cout << "sDD_num: " << _slopping_DDs.size() << std::endl;
+  std::cout << "-------------------------------" << std::endl;
+  // DEBUG END
+  
+  _vertical_DD = Eigen::Vector3d::Zero();
+  _horizontal_DDs.clear();
+  _slopping_DDs.clear();
+
+  _vertical_inliers.clear();
+  _horizontal_inliers.clear();
+  _slopping_inliers.clear();
+
+  reset();
+
+  return true;
 }
 
 
@@ -193,6 +280,32 @@ int RegularityEncoder::estimateVerticalDDsAndInliers(std::map<int, Eigen::Vector
 
   return vertical_inliers.size();
 }
+
+
+/**
+ *  gravity direction version
+ *  vertical_DD is the gravity direction in camera coordination
+ */
+int RegularityEncoder::estimateVerticalDDsAndInliers(std::map<int, Eigen::Vector3d>& normals_of_projection_plane,
+      const Eigen::Vector3d& vertical_DD, std::map<int, Eigen::Vector3d>& vertical_inliers)
+{
+  std::map<int, Eigen::Vector3d>::iterator it;
+  for (it = normals_of_projection_plane.begin(); it != normals_of_projection_plane.end();) {
+    double abs_inner_product = std::abs(vertical_DD.dot(it->second));
+    if (abs_inner_product < _epsilon) {
+      // DEBUG
+      // std::cout << "vertical inlier lines id:" << it->first << std::endl;
+
+      vertical_inliers.insert(std::make_pair(it->first, it->second));
+      normals_of_projection_plane.erase(it++);
+    }
+    else 
+      it++;
+  }
+
+  return vertical_inliers.size();
+}
+
 
 
 int RegularityEncoder::estimateHorizontalDDsAndInliers(std::map<int, Eigen::Vector3d>& normals_of_projection_plane, 
@@ -287,6 +400,10 @@ void RegularityEncoder::getValidInterval(const Eigen::Vector3d& last_type_DD, co
 
   intervals.insert(std::make_pair(start, std::make_pair(0, normal_id)));
   intervals.insert(std::make_pair(end, std::make_pair(1, normal_id)));
+
+  // DEBUG
+  printInterval(start, end, "+");
+
 }
 
 // interval: <endpoint_position, <0/1, normal_id>>, 
@@ -341,12 +458,16 @@ void RegularityEncoder::getOverlapRegion(const std::map<double, std::pair<int, i
     }
 
     // DEBUG
-    // std::cout << "overlaps: " << std::endl;
+    std::cout << "overlaps: " << std::endl;
     // for (auto& overlap: overlaps) {
     //   std::cout << "[" << overlap.first << "," << overlap.second << "]  ";
     // }
     // std::cout << std::endl;
+    //
     // DEBUG
+    for (auto& overlap: overlaps) {
+      printInterval(overlap.first, overlap.second, "0");
+    }
 
   }
   else {
@@ -601,4 +722,27 @@ void RegularityEncoder::printLineInliers(const std::map<int, std::map<int, std::
   }
 
 }
+
+
+void RegularityEncoder::printInterval(double start, double end, char *str)
+{
+  int st = (int)((start + M_PI/2.0) * 50.0);
+  int ed = (int)((end + M_PI/2.0) * 50.0);
+
+  for (int i = 0; i < 157; i++) {
+    if (i < st) {
+      printf("-");
+    }
+    else if (i >= st && i <= ed) {
+      printf("%s", str);
+    }
+    else if (i > ed) {
+      printf("-");
+    }
+  }
+  printf("\t(%f, %f)", start, end);
+  printf("\n");
+}
+
+
 

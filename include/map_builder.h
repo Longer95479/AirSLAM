@@ -18,6 +18,7 @@
 #include "map.h"
 #include "ros_publisher.h"
 #include "g2o_optimization/types.h"
+#include "regularity_encoder.h"
 
 struct InputData{
   size_t index;
@@ -78,6 +79,8 @@ public:
       Preinteration& preinteration);
   int AddKeyframeCheck(FramePtr ref_keyframe, FramePtr current_frame, const std::vector<cv::DMatch>&);
   bool CalFeaturesVelocity(FramePtr current_frame);
+  void EncodeDDs(FramePtr frame);
+  void EncodeDDsAndSaveToDir(FramePtr frame, cv::Mat &image_left_rect, std::string &save_root, int index); // for DEBUG
   void InsertKeyframe(FramePtr frame);
   void InsertKeyframe(FramePtr frame, double& td);
 
@@ -137,6 +140,7 @@ private:
   FeatureDetectorPtr _feature_detector;
   RosPublisherPtr _ros_publisher;
   MapPtr _map;
+  RegularityEncoderPtr _regularity_encoder;
 };
 
 #endif  // MAP_BUILDER_H_

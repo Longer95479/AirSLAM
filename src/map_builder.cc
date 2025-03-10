@@ -29,6 +29,7 @@ MapBuilder::MapBuilder(VisualOdometryConfigs& configs, ros::NodeHandle nh): _shu
   _feature_detector = std::shared_ptr<FeatureDetector>(new FeatureDetector(configs.plnet_config));
   _ros_publisher = std::shared_ptr<RosPublisher>(new RosPublisher(configs.ros_publisher_config, nh));
   _map = std::shared_ptr<Map>(new Map(_configs.backend_optimization_config, _camera, _ros_publisher));
+  _regularity_encoder = std::shared_ptr<RegularityEncoder>(new RegularityEncoder(_camera, 0.3, 0.99));
 
   _feature_thread = std::thread(boost::bind(&MapBuilder::ExtractFeatureThread, this));
   _tracking_thread = std::thread(boost::bind(&MapBuilder::TrackingThread, this));
@@ -219,6 +220,14 @@ void MapBuilder::TrackingThread(){
       std::cout << "insert keyframe, id = " << frame->GetFrameId() << std::endl;
       // calculate features velocity tracked in the keyframe
       CalFeaturesVelocity(frame);
+
+      // extract DDs using gravity direction
+      // EncodeDDs(frame);
+      // for DEBUG
+      static std::string DDs_save_root = "/workspace/debug_regularity_encoder_topic_version";
+      MakeDir(DDs_save_root);
+      EncodeDDsAndSaveToDir(frame, image_left_rect, DDs_save_root, frame->GetFrameId());
+      
       InsertKeyframe(frame);
       _last_keyframe_tracking = frame;
       _last_keyimage = image_left_rect;
@@ -243,7 +252,81 @@ void MapBuilder::TrackingThread(){
   _stop_mutex.lock();
   _tracking_trhead_stop = true;
   _stop_mutex.unlock();
+} 
+
+
+void MapBuilder::EncodeDDs(FramePtr frame)
+{
+  Eigen::Vector3d g; 
+  g << 0.0, 0.0, Camera::IMU_G_VALUE;
+
+  Eigen::Matrix4d& Twc = frame->GetPose();
+  Eigen::Matrix3d Rwc = Twc.block<3, 3>(0, 0);
+
+  std::map<int, std::vector<Eigen::Vector3d>> &DDs = frame->_DDs;
+  std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>> &normal_inliers = frame->_normal_inliers;
+  std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>> &line_inliers = frame->_line_inliers;
+  std::map<int, std::vector<Eigen::Vector4d>> &DDs_on_image = frame->_DDs_on_image;
+  std::vector<Eigen::Vector4d> lines = frame->GatAllLines();
+
+  // g in world frame correction
+  if (_map->IMUInit()) {
+    Eigen::Matrix3d Rwg = _map->GetRwg();
+    g = Rwg * g;
+  }
+
+  // transfer g in world frame to local frame
+  g =  Rwc.transpose() * g;
+
+  _regularity_encoder->encode(lines, DDs, normal_inliers);
+  _regularity_encoder->printNormalInliers(normal_inliers);
+  _regularity_encoder->projectDDsOnImage(DDs, DDs_on_image);
+  _regularity_encoder->normalInliers2LineInliers(lines, normal_inliers, line_inliers);
+  _regularity_encoder->printLineInliers(line_inliers);
+
 }
+
+
+// DEBUG VERSION
+void MapBuilder::EncodeDDsAndSaveToDir(FramePtr frame, cv::Mat &image_left_rect, std::string &save_root, int index)
+{
+  Eigen::Vector3d g; 
+  g << 0.0, 0.0, Camera::IMU_G_VALUE;
+
+  Eigen::Matrix4d& Twc = frame->GetPose();
+  Eigen::Matrix3d Rwc = Twc.block<3, 3>(0, 0);
+
+  std::map<int, std::vector<Eigen::Vector3d>> &DDs = frame->_DDs;
+  std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>> &normal_inliers = frame->_normal_inliers;
+  std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>> &line_inliers = frame->_line_inliers;
+  std::map<int, std::vector<Eigen::Vector4d>> &DDs_on_image = frame->_DDs_on_image;
+
+  std::vector<Eigen::Vector4d> lines = frame->GatAllLines();
+  Eigen::Matrix<float, 259, Eigen::Dynamic> features = frame->GetAllFeatures();
+
+  // g in world frame correction
+  if (_map->IMUInit()) {
+    Eigen::Matrix3d Rwg = _map->GetRwg();
+    g = Rwg * g;
+  }
+
+  // transfer g in world frame to local frame
+  g =  Rwc.transpose() * g;
+
+  // DEBUG
+  std::cout << "[reg encode]" << "frame " << index << std::endl;
+
+  _regularity_encoder->encode(lines, g, DDs, normal_inliers);
+  _regularity_encoder->printNormalInliers(normal_inliers);
+  _regularity_encoder->projectDDsOnImage(DDs, DDs_on_image);
+  _regularity_encoder->normalInliers2LineInliers(lines, normal_inliers, line_inliers);
+  // _regularity_encoder->printLineInliers(line_inliers);
+
+  SaveLineDetectionResult(image_left_rect, lines, save_root, std::to_string(index));
+  SaveLineRegularityEncodeResult(image_left_rect, line_inliers, DDs_on_image, save_root, std::to_string(index));
+  SaveDetectorResult(image_left_rect, features, save_root, std::to_string(index));
+}
+
 
 // bool MapBuilder::saveTdToCSV(const std::vector<std::pair<double, double>>& tsp_tds, const std::string& filename)
 // {

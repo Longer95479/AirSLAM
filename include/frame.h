@@ -233,6 +233,14 @@ private:
   // for re-localization, word id <-> sentecnse indeces
   std::map<DBoW2::WordId, std::vector<int>> _sentence_ids_of_word;
   std::vector<std::vector<DBoW2::WordId>> _sentences;
+
+public:
+  // for DDs
+  std::map<int, std::vector<Eigen::Vector3d>> _DDs;
+  std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>> _normal_inliers;
+  std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>> _line_inliers;
+  std::map<int, std::vector<Eigen::Vector4d>> _DDs_on_image;
+
 };
 
 typedef std::shared_ptr<Frame> FramePtr;

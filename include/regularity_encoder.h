@@ -23,6 +23,11 @@ public:
         std::map<int, std::vector<Eigen::Vector3d>>& DDs, 
         std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers);
 
+  bool encode(const std::vector<Eigen::Vector4d>& lines, 
+        const Eigen::Vector3d& g_dir,
+        std::map<int, std::vector<Eigen::Vector3d>>& DDs, 
+        std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers); 
+
   void projectDDsOnImage(const std::map<int, std::vector<Eigen::Vector3d>>& DDs, 
         std::map<int, std::vector<Eigen::Vector4d>>& DDs_on_image);
 
@@ -61,6 +66,9 @@ private:
         const Eigen::Vector3d& vertical_sample_0, const Eigen::Vector3d& vertical_sample_1, 
         Eigen::Vector3d& vertical_DD, std::map<int, Eigen::Vector3d>& vertical_inliers);
 
+  int estimateVerticalDDsAndInliers(std::map<int, Eigen::Vector3d>& normals_of_projection_plane,
+        const Eigen::Vector3d& vertical_DD, std::map<int, Eigen::Vector3d>& vertical_inliers);
+
   int estimateHorizontalDDsAndInliers(std::map<int, Eigen::Vector3d>& normals_of_projection_plane, 
         const std::map<int, Eigen::Vector3d>& vertical_inliers, 
         const Eigen::Vector3d& vertical_DD,
@@ -78,11 +86,13 @@ private:
 
   void reset();
 
+  void printInterval(double start, double end, char *str); // for debug
+
 private:
  
   // param
   int _M; // sample a pair of normals M times for computing the vertical DD vm
-  int _tau = 6; // cardinality threshold
+  int _tau = 4; // cardinality threshold
   double _epsilon = std::sin(M_PI/180); // inner product threshold
   double _cardin_peak_thr = 2 * 2 * M_PI/180; // merge two sets of valid intervals if their corresponding in under-stabbing probes are close
 
