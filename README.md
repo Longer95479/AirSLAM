@@ -25,8 +25,8 @@ AirSLAM 上开发了提取场景结构主方向的前端模块，实现场景结
 使用外参在线估计与不使用外参估计的对比如下：
 
 <p align="middle">
-  <img src="figures/not_use_extrinsic_estimate.png" height="300" />
-  <img src="figures/use_extrinsic_estimate.png" height="300" />
+  <img src="figures/not_use_extrinsic_estimate.png" height="250" />
+  <img src="figures/use_extrinsic_estimate.png" height="250" />
 </p>
 
 - AirSLAM 仅支持ASL数据集格式，不利于在rosbag数据集的测试，在分析代码中IMU预积分与相
