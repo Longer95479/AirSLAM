@@ -1,3 +1,46 @@
+- 针对传统方法提取的线特征较杂乱且三角化结果较差的问题，基于共识投票策略，在开源里程计
+AirSLAM 上开发了提取场景结构主方向的前端模块，实现场景结构线主方向的估计。
+该模块实现了多个水平主方向的检测，且可扩展到对倾斜主方向
+的提取，不依赖于特定的线特征，示意如下：
+
+<p align="middle">
+  <img src="figures/oringin_lines.jpg" width="400" />
+  <img src="figures/DDs.jpg" width="400" />
+</p>
+
+- 某帧内的局部主方向与该帧的姿态估计受噪声影响，由此计算出的全局主方向将会偏离真值，为估
+计出准确的全局主方向，使用卡尔曼滤波实现对全局主方向的微调。相比单次观测，该功能可统计主
+方向的协方差矩阵，用于外点的剔除
+
+- AirSLAM在没有时间同步的个人数据集上测试时漂移较大，为了解决IMU与相机时间存在偏移引起
+的问题，在AirSLAM上开发了IMU与相机时间戳偏移在线估计功能（[博客：时间戳偏移在线估计](https://longer95479.github.io/temporal-online-calibration-exp)）。
+下图展示了 100 ms 偏移情况下，时间偏移估计值是如何收敛到真实偏移附近的：
+
+<p align="middle">
+  <img src="figures/temporal_calibration.png" width="500" />
+</p>
+
+- AirSLAM在没有准确外参的个人数据集上测试时漂移较大，为了解决IMU与相机外参不准确引起的
+问题，在AirSLAM上开发了IMU与相机外参在线估计功能（[博客：外参在线估计](https://longer95479.github.io/extrinsic-calibration-online)）。
+使用外参在线估计与不使用外参估计的对比如下：
+
+<p align="middle">
+  <img src="figures/not_use_extrinsic_estimate.png" height="300" />
+  <img src="figures/use_extrinsic_estimate.png" height="300" />
+</p>
+
+- AirSLAM 仅支持ASL数据集格式，不利于在rosbag数据集的测试，在分析代码中IMU预积分与相
+机帧的关系后，确定了IMU打包策略，在AirSLAM上开发了rosbag数据集格式的功能。[博客：AirSLAM 代码分析](https://longer95479.github.io/airslam-code-reading)
+
+
+
+
+
+
+
+---
+
+
 <h1 align="center">AirSLAM: An Efficient and Illumination-Robust Point-Line Visual SLAM System</h1>
 
 <p align="center"><strong>
