@@ -1,7 +1,7 @@
 #ifndef REGULARITY_ENCODER_H_
 #define REGULARITY_ENCODER_H_
 
-#include <istream>
+#include <iostream>
 #include <map>
 #include <string>
 #include <vector>
@@ -13,6 +13,42 @@
 #include "camera.h"
 
 #include "utils.h"
+
+
+struct Polar {
+  Polar() {}
+  Polar(double x, double y) {
+    _range = std::sqrt(x*x + y*y);
+    _angle = std::atan(y/x);
+  }
+  friend std::ostream& operator<<(std::ostream& os, const Polar& p); 
+
+  double _range; 
+  double _angle;
+};
+
+
+class GlobalDD {
+public:
+  GlobalDD(){}
+  GlobalDD(const Eigen::Vector3d &vec, const Eigen::Matrix3d &cov): _gDD(vec), _cov(cov) {
+    _is_init = true;
+  }
+
+  bool isInit() {return _is_init;}
+  long long getUpdateCnt() {return _update_cnt;}
+  void initDD(const Eigen::Vector3d &prior, const Eigen::Matrix3d &cov);
+  void updateDD(const Eigen::Vector3d &obs, const Eigen::Matrix3d &cov_obs);
+
+  Eigen::Vector3d _gDD;
+  Eigen::Matrix3d _cov;
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+private:
+  bool _is_init = false;
+  long long _update_cnt = 0;
+};
 
 
 class RegularityEncoder {
@@ -38,6 +74,12 @@ public:
   void printNormalInliers(const std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers);
 
   void printLineInliers(const std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>>& inliers);
+
+  // global DDs
+  void refineGlobalDDs(const std::map<int, std::vector<Eigen::Vector3d>> &local_DDs, 
+                       const Eigen::Matrix3d &Rwc);
+
+  void printGlobalDDs();
 
 private:
   void  getValidInterval(const Eigen::Vector3d& last_type_DD, const Eigen::Vector3d& ref_inlier, 
@@ -72,8 +114,7 @@ private:
   int estimateHorizontalDDsAndInliers(std::map<int, Eigen::Vector3d>& normals_of_projection_plane, 
         const std::map<int, Eigen::Vector3d>& vertical_inliers, 
         const Eigen::Vector3d& vertical_DD,
-        std::vector<Eigen::Vector3d>& horizontal_DDs, 
-        std::map<int, std::map<int, Eigen::Vector3d>>& horizontal_inliers);
+        std::vector<Eigen::Vector3d>& horizontal_DDs, std::map<int, std::map<int, Eigen::Vector3d>>& horizontal_inliers);
 
   int estimateSloppingDDsAndInliers(std::map<int, Eigen::Vector3d>& normals_of_projection_plane, 
         const std::map<int, std::map<int, Eigen::Vector3d>>& horizontal_inliers, 
@@ -86,15 +127,20 @@ private:
 
   void reset();
 
-  void printInterval(double start, double end, char *str); // for debug
+  void printInterval(double start, double end, char *str, int id); // for debug
+
+  // global DDs
+  void initGlobalDDs(const std::map<int, std::vector<Eigen::Vector3d>> &local_DDs,
+                     const Eigen::Matrix3d &Rwc);
+
 
 private:
  
   // param
   int _M; // sample a pair of normals M times for computing the vertical DD vm
-  int _tau = 4; // cardinality threshold
+  int _tau = 5; // cardinality threshold
   double _epsilon = std::sin(M_PI/180); // inner product threshold
-  double _cardin_peak_thr = 2 * 2 * M_PI/180; // merge two sets of valid intervals if their corresponding in under-stabbing probes are close
+  double _cardin_peak_thr = 9 * M_PI/180; // merge two sets of valid intervals if their corresponding in under-stabbing probes are close
 
   double _fx, _fy, _cx, _cy;
 
@@ -112,6 +158,15 @@ private:
   std::map<int, std::map<int, Eigen::Vector3d>> _horizontal_inliers; 
   // first int: different slopping DDs, second int: lines id in a local frame
   std::map<int, std::map<int, Eigen::Vector3d>> _slopping_inliers;
+
+
+  // global DDs, will be maintained in a longlife way
+  GlobalDD _vertical_gDD;
+  std::vector<GlobalDD> _horizontal_gDDs;
+  std::vector<GlobalDD> _slopping_gDDs;
+
+  bool _gDDs_init = false;
+
 
 private:
   const CameraPtr _camera;

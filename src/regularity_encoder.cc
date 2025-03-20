@@ -2,6 +2,13 @@
 
 #include "time.h"
 
+
+std::ostream& operator<<(std::ostream& os, const Polar& p) {
+  os << "range: " << p._range << ", angle: " << p._angle;
+  return os;
+}
+
+
 RegularityEncoder::RegularityEncoder(const CameraPtr camera, double P_of_vertival_inlier, double P_of_all_inlier): _camera(camera){
   double P = P_of_all_inlier;
   double k = P_of_vertival_inlier;
@@ -381,15 +388,15 @@ void RegularityEncoder::getValidInterval(const Eigen::Vector3d& last_type_DD, co
   //   return;
   // }
 
-  if (std::abs(epsilon_tilde) >= 2*_epsilon) {
-    // std::cout << "[warn]: valid interval is too wide." << std::endl;
+  if (std::abs(epsilon_tilde) >= 10*_epsilon) {
+    std::cout << "[warn]: valid interval is too wide." << std::endl;
     return;
   }
 
   double asin_epsilon_tilde = std::asin(epsilon_tilde);
 
   if (std::abs(b/sqrt_a2_puls_b2) < asin_epsilon_tilde) {
-    // std::cout << "[warn]: valid interval is not continue." << std::endl;
+    std::cout << "[warn]: valid interval is not continue." << std::endl;
     return;
   }
 
@@ -402,7 +409,7 @@ void RegularityEncoder::getValidInterval(const Eigen::Vector3d& last_type_DD, co
   intervals.insert(std::make_pair(end, std::make_pair(1, normal_id)));
 
   // DEBUG
-  printInterval(start, end, "+");
+  printInterval(start, end, "+", normal_id);
 
 }
 
@@ -466,7 +473,7 @@ void RegularityEncoder::getOverlapRegion(const std::map<double, std::pair<int, i
     //
     // DEBUG
     for (auto& overlap: overlaps) {
-      printInterval(overlap.first, overlap.second, "0");
+      printInterval(overlap.first, overlap.second, "0", -1);
     }
 
   }
@@ -534,6 +541,7 @@ void RegularityEncoder::getDDsAndInliers(const Eigen::Vector3d& last_type_DD,
   thetas.sort();
 
   // merge two theta if they are close
+  double cnt = 1.0;
   for (std::list<double>::iterator theta = thetas.begin();
       theta != thetas.end();) {
 
@@ -545,16 +553,22 @@ void RegularityEncoder::getDDsAndInliers(const Eigen::Vector3d& last_type_DD,
     theta++;
     double t2 = *theta;
     if (std::abs(t1 - t2) < _cardin_peak_thr) {
-      double tmp = (t1 + t2) / 2;
+      double tmp = (t1 * cnt + t2) / (cnt + 1);
+      cnt += 1.0;
+
       theta++;
       thetas.insert(theta, tmp);
       theta--;
       theta--;
-      thetas.erase(theta--);
-      thetas.erase(theta++);
+      theta--;
+      theta = thetas.erase(theta);
+      theta = thetas.erase(theta);
+    }
+    else {
+      cnt = 1;
     }
   }
-
+  
   //
   //
   //
@@ -564,8 +578,13 @@ void RegularityEncoder::getDDsAndInliers(const Eigen::Vector3d& last_type_DD,
       it_theta != thetas.end();) {
 
     double theta = *it_theta;
+    // DEBUG 
+    std::cout << "merged thetas: " << std::endl;
+    printInterval(theta, theta, "o", -1);
+    
     // reduce inormals_of_projection_plane 
     // get normal inliers
+    std::cout << "picked interval: " << std::endl;
     for (std::map<int, std::pair<double, double>>::iterator it = intervals_rerange.begin();
         it != intervals_rerange.end();) {
       int line_id = it->first;
@@ -573,11 +592,17 @@ void RegularityEncoder::getDDsAndInliers(const Eigen::Vector3d& last_type_DD,
       double right_ep = it->second.second;
 
       if (theta >= left_ep && theta < right_ep) {
+        // DEBUG
+        printInterval(left_ep, right_ep, "p", line_id);
+
         inliers[DDs_id].insert(std::make_pair(line_id, normals_of_projection_plane[line_id])); 
         normals_of_projection_plane.erase(line_id);
+        it = intervals_rerange.erase(it);
+      }
+      else {
+        it++;
       }
 
-      it++;
     }
 
     // get DDs
@@ -724,7 +749,7 @@ void RegularityEncoder::printLineInliers(const std::map<int, std::map<int, std::
 }
 
 
-void RegularityEncoder::printInterval(double start, double end, char *str)
+void RegularityEncoder::printInterval(double start, double end, char *str, int id)
 {
   int st = (int)((start + M_PI/2.0) * 50.0);
   int ed = (int)((end + M_PI/2.0) * 50.0);
@@ -740,8 +765,165 @@ void RegularityEncoder::printInterval(double start, double end, char *str)
       printf("-");
     }
   }
-  printf("\t(%f, %f)", start, end);
+  printf("\t(%f, %f)\tid:%d", start, end, id);
   printf("\n");
+}
+
+
+
+
+void RegularityEncoder::refineGlobalDDs(const std::map<int, std::vector<Eigen::Vector3d>> &local_DDs, 
+                                        const Eigen::Matrix3d &Rwc)
+{
+  if (_gDDs_init == false) {
+    // use first bunch of lDDs to init
+    initGlobalDDs(local_DDs, Rwc);
+    _gDDs_init = true;
+    return;
+  }
+
+  // travel all local DDs
+  //   if: lDD align with existed gDD, update gDD
+  //   else if: lDD doesn't align any existed gDDs, creat gDD
+  std::map<int, std::vector<Eigen::Vector3d>>::const_iterator it = local_DDs.begin();
+  for (; it != local_DDs.end(); it++) {
+    int DD_type = it->first;
+    std::vector<Eigen::Vector3d> lDDs = it->second;
+
+    if (DD_type == 0) { // vertical DDs
+      // travel all lDD
+      for (auto &lDD: lDDs) {
+        Eigen::Vector3d gDD_measure = Rwc * lDD;
+        Eigen::Vector3d &vgDD = _vertical_gDD._gDD;
+
+        // compare with the exist vertical DD
+        double inner_product = vgDD.dot(gDD_measure);
+        double abs_inner_product = std::abs(inner_product);
+        if (abs_inner_product > 0.96) { // this measurement is belong to this gDD
+          if (inner_product < 0) {
+            gDD_measure = -gDD_measure;
+          }
+          _vertical_gDD.updateDD(gDD_measure, Eigen::Matrix3d::Identity());
+        }
+      }
+    }
+    else if (DD_type == 1) { // horizental DDs
+      // travel all lDD
+      for (auto &lDD: lDDs) {
+        Eigen::Vector3d gDD_measure = Rwc * lDD;
+
+        // Not observe any horiznetal global DD yet, 
+        // just create a new horizental gloabal DD
+        if (_horizontal_gDDs.size() == 0) {
+          GlobalDD new_hori_gDD(gDD_measure, Eigen::Matrix3d::Identity());
+          _horizontal_gDDs.push_back(new_hori_gDD);
+          continue;
+        }
+ 
+        // compare with all horizental global DD
+        bool is_align = false;
+        for (auto &hori_gDD: _horizontal_gDDs) {
+          Eigen::Vector3d &hgDD = hori_gDD._gDD;
+
+          // compare
+          double inner_product = hgDD.dot(gDD_measure);
+          double abs_inner_product = std::abs(inner_product);
+          if (abs_inner_product > 0.96) { // align exist horizental global DD
+            if (inner_product < 0) {
+              gDD_measure = -gDD_measure;
+            }
+            hori_gDD.updateDD(gDD_measure, Eigen::Matrix3d::Identity());
+            is_align = true;
+            break;
+          }
+        }
+
+        if (!is_align) { // create a new horizental global DD
+          GlobalDD new_hori_gDD(gDD_measure, Eigen::Matrix3d::Identity());
+          _horizontal_gDDs.push_back(new_hori_gDD);
+        }
+
+      }
+    }
+    else if (DD_type == 2) { // slop DDs
+
+    }
+  }
+
+}
+
+
+void RegularityEncoder::initGlobalDDs(const std::map<int, std::vector<Eigen::Vector3d>> &local_DDs,
+                                      const Eigen::Matrix3d &Rwc)
+{
+  std::map<int, std::vector<Eigen::Vector3d>>::const_iterator it = local_DDs.begin();
+
+  for (;it != local_DDs.end(); it++) {
+    int lDD_type = it->first;
+    std::vector<Eigen::Vector3d> DDs = it->second;
+
+    if (lDD_type == 0) {
+      Eigen::Vector3d gDD_tmp = Rwc * DDs[0];
+      _vertical_gDD.initDD(gDD_tmp, Eigen::Matrix3d::Identity());
+    }
+    else if (lDD_type == 1) {
+      for (auto &DD: DDs) {
+        Eigen::Vector3d gDD_tmp = Rwc * DD;
+        GlobalDD tmp(gDD_tmp, Eigen::Matrix3d::Identity());
+        _horizontal_gDDs.push_back(tmp);
+      }
+    }
+    else if (lDD_type == 2) {
+
+    }
+  }
+}
+
+
+void RegularityEncoder::printGlobalDDs()
+{
+  std::cout << "[print global DDs]" << std::endl;
+
+  std::cout << "- vertical global DD:" << std::endl;
+  std::cout << "val: " << _vertical_gDD._gDD.transpose() << std::endl;
+  std::cout << "cov: " << std::endl;
+  std::cout << _vertical_gDD._cov << std::endl;
+
+  std::cout << "- horizental global DD:" << std::endl;
+  std::cout << "size: " << _horizontal_gDDs.size() << std::endl;
+  int i = 0;
+  for (auto &hgDD: _horizontal_gDDs) {
+    std::cout << "update cnt: " << hgDD.getUpdateCnt() << std::endl;
+
+    std::cout << "val" << i << ": " << hgDD._gDD.transpose() << std::endl;
+    Polar gDD_polar(hgDD._gDD(0), hgDD._gDD(1));
+    std::cout << gDD_polar << std::endl;
+
+    std::cout << "cov" << i << ": " << std::endl;
+    std::cout << hgDD._cov << std::endl;
+
+    std::cout << std::endl;
+    i++;
+  }
+}
+
+
+void GlobalDD::initDD(const Eigen::Vector3d &prior, const Eigen::Matrix3d &cov)
+{
+  _gDD = prior;
+  _cov = cov;
+  _is_init = true;
+}
+
+
+void GlobalDD::updateDD(const Eigen::Vector3d &obs, const Eigen::Matrix3d &cov_obs)
+{
+  Eigen::Matrix3d gain;
+  gain = _cov * (cov_obs + _cov).inverse();
+  _gDD = _gDD + gain * (obs - _gDD);
+  _gDD = _gDD / _gDD.norm();
+  _cov = (Eigen::Matrix3d::Identity() - gain) * _cov;
+  _update_cnt++;
 }
 
 

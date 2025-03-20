@@ -90,7 +90,7 @@ void MapBuilder::ExtractFeatureThread(){
     if(!_init || _insert_next_keyframe){
       Eigen::Matrix<float, 259, Eigen::Dynamic> junctions;
       _feature_detector->Detect(image_left_rect, image_right_rect, left_features, right_features, left_lines, right_lines, junctions);
-      _point_matcher->MatchingPoints(left_features, right_features, stereo_matches, false);
+      _point_matcher->MatchingPoints(left_features, right_features, stereo_matches, true);
       frame->AddLeftFeatures(left_features, left_lines);
       good_stereo_point = frame->AddRightFeatures(right_features, right_lines, stereo_matches);
       frame_type = _init ? FrameType::KeyFrame : FrameType::InitializationFrame;
@@ -290,6 +290,9 @@ void MapBuilder::EncodeDDs(FramePtr frame)
 // DEBUG VERSION
 void MapBuilder::EncodeDDsAndSaveToDir(FramePtr frame, cv::Mat &image_left_rect, std::string &save_root, int index)
 {
+
+  if (UseIMU() && !_map->IMUInit()) return;
+
   Eigen::Vector3d g; 
   g << 0.0, 0.0, Camera::IMU_G_VALUE;
 
@@ -317,10 +320,13 @@ void MapBuilder::EncodeDDsAndSaveToDir(FramePtr frame, cv::Mat &image_left_rect,
   std::cout << "[reg encode]" << "frame " << index << std::endl;
 
   _regularity_encoder->encode(lines, g, DDs, normal_inliers);
+  _regularity_encoder->refineGlobalDDs(DDs, Rwc);
+
   _regularity_encoder->printNormalInliers(normal_inliers);
   _regularity_encoder->projectDDsOnImage(DDs, DDs_on_image);
   _regularity_encoder->normalInliers2LineInliers(lines, normal_inliers, line_inliers);
   // _regularity_encoder->printLineInliers(line_inliers);
+  _regularity_encoder->printGlobalDDs();
 
   SaveLineDetectionResult(image_left_rect, lines, save_root, std::to_string(index));
   SaveLineRegularityEncodeResult(image_left_rect, line_inliers, DDs_on_image, save_root, std::to_string(index));
@@ -563,6 +569,8 @@ int MapBuilder::FramePoseOptimization(FramePtr frame0, FramePtr frame1, std::vec
     }
   }
 
+  // debug
+  std::cout << "[before FrameOptimization] ref_frame: " << frame0->GetFrameId() << ", frame_opt: " << frame1->GetFrameId() << std::endl;
   int num_inliers = FrameOptimization(poses, points, lines, velocities, biases, camera_list, 
     mono_point_constraints, stereo_point_constraints, mono_line_constraints, stereo_line_constraints,
     imu_constraints, Rwg, _configs.tracking_optimization_config);

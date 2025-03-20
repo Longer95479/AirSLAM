@@ -454,20 +454,20 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
     VectorOfMonoLineConstraints& mono_line_constraints, VectorOfStereoLineConstraints& stereo_line_constraints,
     VectorOfIMUConstraints& imu_constraints, const Eigen::Matrix3d& Rwg, double& td, const OptimizationConfig& cfg){
 
-  std::cout << "---------LocalmapOptimization----------" << std::endl;
-  std::cout << "poses.size = " << poses.size() << std::endl;
-  std::cout << "points.size = " << points.size() << std::endl;
-  std::cout << "lines.size = " << lines.size() << std::endl;
-  std::cout << "velocities.size = " << velocities.size() << std::endl;
-  std::cout << "biases.size = " << biases.size() << std::endl;
-  std::cout << "mono_point_constraints.size = " << mono_point_constraints.size() << std::endl;
-  std::cout << "stereo_point_constraints.size = " << stereo_point_constraints.size() << std::endl;
-  std::cout << "mono_line_constraints.size = " << mono_line_constraints.size() << std::endl;
-  std::cout << "stereo_line_constraints.size = " << stereo_line_constraints.size() << std::endl;
-  std::cout << "imu_constraints.size = " << imu_constraints.size() << std::endl;
-  std::cout << "td = " << td << std::endl;
-  std::cout << "Rbc = " << std::endl << camera_list[0]->CameraToBody() << std::endl;
-  std::cout << "------------------------------------" << std::endl;
+  // std::cout << "---------LocalmapOptimization----------" << std::endl;
+  // std::cout << "poses.size = " << poses.size() << std::endl;
+  // std::cout << "points.size = " << points.size() << std::endl;
+  // std::cout << "lines.size = " << lines.size() << std::endl;
+  // std::cout << "velocities.size = " << velocities.size() << std::endl;
+  // std::cout << "biases.size = " << biases.size() << std::endl;
+  // std::cout << "mono_point_constraints.size = " << mono_point_constraints.size() << std::endl;
+  // std::cout << "stereo_point_constraints.size = " << stereo_point_constraints.size() << std::endl;
+  // std::cout << "mono_line_constraints.size = " << mono_line_constraints.size() << std::endl;
+  // std::cout << "stereo_line_constraints.size = " << stereo_line_constraints.size() << std::endl;
+  // std::cout << "imu_constraints.size = " << imu_constraints.size() << std::endl;
+  // std::cout << "td = " << td << std::endl;
+  // std::cout << "Rbc = " << std::endl << camera_list[0]->CameraToBody() << std::endl;
+  // std::cout << "------------------------------------" << std::endl;
 
   // 1. optimizer
   g2o::SparseOptimizer optimizer;
@@ -475,7 +475,7 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   g2o::OptimizationAlgorithmLevenberg *solver = new g2o::OptimizationAlgorithmLevenberg(
     g2o::make_unique<g2o::BlockSolverX>(std::move(linear_solver)));
 
-  optimizer.setVerbose(true);
+  optimizer.setVerbose(false);
   optimizer.setAlgorithm(solver);
 
   // 2. frame vertex
@@ -574,10 +574,11 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   extrinsic_vertex->setEstimate(extrinsic);
   extrinsic_vertex->setId(id_ext);
   std::cout << "max_frame_id = "  << max_frame_id << std::endl;
-  if (max_frame_id > 0)
-    extrinsic_vertex->setFixed(false);
-  else
-    extrinsic_vertex->setFixed(true);
+  // if (max_frame_id > 0)
+  //   extrinsic_vertex->setFixed(false);
+  // else
+  //   extrinsic_vertex->setFixed(true);
+  extrinsic_vertex->setFixed(true);
   optimizer.addVertex(extrinsic_vertex);
 
   // 7.z extrinsic edges
@@ -589,6 +590,7 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   // rk->setDelta(thHuberMonoPoint);
   // e->setInformation(Matrix6d::Identity() * mono_point_constraints.size());
   extrinsic_prior_edge->setInformation(1e7 * Matrix6d::Identity());
+  // extrinsic_prior_edge->setInformation(0.0 * Matrix6d::Identity());
   optimizer.addEdge(extrinsic_prior_edge);
 #endif
 
@@ -844,8 +846,6 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   for(MapOfPoses::iterator it = poses.begin(); it != poses.end(); ++it){
     VertexVIPose* frame_vertex = static_cast<VertexVIPose*>(optimizer.vertex(it->first));
 #ifdef OPEN_EXTRINSIC_ESTIMATE
-    // TODO can't modifed const ret
-    // frame_vertex->estimate().SetExtrinsic(Rcb, tcb);
     it->second.p = frame_vertex->estimate().twb + frame_vertex->estimate().Rwb * tbc; 
     it->second.R = frame_vertex->estimate().Rwb * Rbc;
 #else
