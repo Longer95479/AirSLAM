@@ -9,10 +9,15 @@ std::ostream& operator<<(std::ostream& os, const Polar& p) {
 }
 
 
-RegularityEncoder::RegularityEncoder(const CameraPtr camera, double P_of_vertival_inlier, double P_of_all_inlier): _camera(camera){
+RegularityEncoder::RegularityEncoder(const CameraPtr camera, double P_of_vertival_inlier, 
+                                     double P_of_all_inlier, const RegularityEncoderConfig& cfg): _camera(camera), _config(cfg){
   double P = P_of_all_inlier;
   double k = P_of_vertival_inlier;
   _M = std::ceil( std::log(1 - P) / std::log(1 - k*k) );
+
+  _tau = _config.tau;
+  _epsilon = _config.epsilon;
+  _cardin_peak_thr = _config.cardin_peak_thr;
 
   _fx = _camera->Fx();
   _fy = _camera->Fy();
@@ -24,6 +29,9 @@ RegularityEncoder::RegularityEncoder(const CameraPtr camera, double P_of_vertiva
   std::cout << "P_of_vertival_inlier: " << P_of_vertival_inlier << std::endl;
   std::cout << "P_of_all_inlier" << P_of_all_inlier << std::endl;
   std::cout << "_M: " << _M << std::endl;
+  std::cout << "_tau: " << _tau << std::endl;
+  std::cout << "_epsilon: " << _epsilon << std::endl;
+  std::cout << "_cardin_peak_thr: " << _cardin_peak_thr << std::endl;
 }
 
 /**
@@ -728,6 +736,60 @@ void RegularityEncoder::printNormalInliers(const std::map<int, std::map<int, std
 
 }
 
+void RegularityEncoder::printNormalInliers(const std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers, 
+                                           const std::map<int, std::map<int, int>>& lDDtype_lDDid_gDDid)
+{
+  std::cout << "print normal inliers: " << std::endl;
+  for (auto& inlier: inliers) {
+    std::cout << "- type of DD: " << inlier.first << std::endl;
+    auto& DDid_lineid_normals = inlier.second;
+    for (auto& DDid_lineid_normal: DDid_lineid_normals) {
+      std::cout << "  - DD id: " << DDid_lineid_normal.first;
+      std::cout << " | gDD id: " << lDDtype_lDDid_gDDid.at(inlier.first).at(DDid_lineid_normal.first) << std::endl;
+      std::cout << "    - line id: ";
+      auto& lineid_normals = DDid_lineid_normal.second;
+      for (auto& lineid_normal: lineid_normals) {
+        std::cout << lineid_normal.first << " ";
+      }
+      std::cout << std::endl;
+    }
+  }
+}
+
+
+void RegularityEncoder::getLineIdMapToGDDId(const std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers, 
+                                            const std::map<int, std::map<int, int>>& lDDtype_lDDid_gDDid, 
+                                            std::vector<std::pair<int, int>> *lines_gDD_ptr)
+{
+  for (auto &inlier: inliers) {
+    int DD_type = inlier.first;
+    auto DDid_inlierid_inliers = inlier.second;
+
+    for (auto DDid_inlierid_inlier: DDid_inlierid_inliers) {
+      int DD_id = DDid_inlierid_inlier.first;
+      auto inlierid_inliers = DDid_inlierid_inlier.second;
+
+      int gDDid = lDDtype_lDDid_gDDid.at(DD_type).at(DD_id);
+
+      for (auto &inlierid_inlier: inlierid_inliers) {
+        int inlier_id = inlierid_inlier.first;
+        (*lines_gDD_ptr)[inlier_id] = std::make_pair(DD_type, gDDid);
+      }
+    }
+  }
+}
+
+void RegularityEncoder::printLineIdGDDId(const std::vector<std::pair<int, int>> &lines_gDD)
+{
+  std::cout << "(lines id, gDD type, gDD id): ";
+  int i = 0;
+  for (auto &kv: lines_gDD) {
+    printf("(%d, %d, %d), ", i, kv.first, kv.second);
+    i++;
+  }
+  std::cout << std::endl;
+}
+
 
 void RegularityEncoder::printLineInliers(const std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>>& inliers)
 {
@@ -773,11 +835,12 @@ void RegularityEncoder::printInterval(double start, double end, char *str, int i
 
 
 void RegularityEncoder::refineGlobalDDs(const std::map<int, std::vector<Eigen::Vector3d>> &local_DDs, 
-                                        const Eigen::Matrix3d &Rwc)
+                                        const Eigen::Matrix3d &Rwc,
+                                        std::shared_ptr<std::map<int, std::map<int, int>>> lDDtype_lDDid_gDDid)
 {
   if (_gDDs_init == false) {
     // use first bunch of lDDs to init
-    initGlobalDDs(local_DDs, Rwc);
+    initGlobalDDs(local_DDs, Rwc, lDDtype_lDDid_gDDid);
     _gDDs_init = true;
     return;
   }
@@ -792,6 +855,7 @@ void RegularityEncoder::refineGlobalDDs(const std::map<int, std::vector<Eigen::V
 
     if (DD_type == 0) { // vertical DDs
       // travel all lDD
+      int lDDid = 0;
       for (auto &lDD: lDDs) {
         Eigen::Vector3d gDD_measure = Rwc * lDD;
         Eigen::Vector3d &vgDD = _vertical_gDD._gDD;
@@ -804,19 +868,30 @@ void RegularityEncoder::refineGlobalDDs(const std::map<int, std::vector<Eigen::V
             gDD_measure = -gDD_measure;
           }
           _vertical_gDD.updateDD(gDD_measure, Eigen::Matrix3d::Identity());
+
+          //lDD-gDD map
+          if (lDDtype_lDDid_gDDid != nullptr)
+            (*lDDtype_lDDid_gDDid)[0][lDDid] = 0;
         }
+        lDDid++;
       }
     }
     else if (DD_type == 1) { // horizental DDs
       // travel all lDD
+      int lDDid = 0;
       for (auto &lDD: lDDs) {
         Eigen::Vector3d gDD_measure = Rwc * lDD;
+        int hgDDid = 0;
 
         // Not observe any horiznetal global DD yet, 
         // just create a new horizental gloabal DD
         if (_horizontal_gDDs.size() == 0) {
           GlobalDD new_hori_gDD(gDD_measure, Eigen::Matrix3d::Identity());
           _horizontal_gDDs.push_back(new_hori_gDD);
+
+          // lDD-gDD map
+          if (lDDtype_lDDid_gDDid != nullptr)
+            (*lDDtype_lDDid_gDDid)[1][lDDid] = hgDDid; 
           continue;
         }
  
@@ -834,15 +909,25 @@ void RegularityEncoder::refineGlobalDDs(const std::map<int, std::vector<Eigen::V
             }
             hori_gDD.updateDD(gDD_measure, Eigen::Matrix3d::Identity());
             is_align = true;
+
+            // lDD-gDD map
+            if (lDDtype_lDDid_gDDid != nullptr)
+              (*lDDtype_lDDid_gDDid)[1][lDDid] = hgDDid; 
+
             break;
           }
+          hgDDid++;
         }
 
         if (!is_align) { // create a new horizental global DD
           GlobalDD new_hori_gDD(gDD_measure, Eigen::Matrix3d::Identity());
           _horizontal_gDDs.push_back(new_hori_gDD);
-        }
 
+          // lDD-gDD map
+          if (lDDtype_lDDid_gDDid != nullptr)
+            (*lDDtype_lDDid_gDDid)[1][lDDid] = _horizontal_gDDs.size() - 1;
+        }
+        lDDid++;
       }
     }
     else if (DD_type == 2) { // slop DDs
@@ -854,7 +939,8 @@ void RegularityEncoder::refineGlobalDDs(const std::map<int, std::vector<Eigen::V
 
 
 void RegularityEncoder::initGlobalDDs(const std::map<int, std::vector<Eigen::Vector3d>> &local_DDs,
-                                      const Eigen::Matrix3d &Rwc)
+                                      const Eigen::Matrix3d &Rwc,
+                                      std::shared_ptr<std::map<int, std::map<int, int>>> lDDtype_lDDid_gDDid)
 {
   std::map<int, std::vector<Eigen::Vector3d>>::const_iterator it = local_DDs.begin();
 
@@ -865,12 +951,22 @@ void RegularityEncoder::initGlobalDDs(const std::map<int, std::vector<Eigen::Vec
     if (lDD_type == 0) {
       Eigen::Vector3d gDD_tmp = Rwc * DDs[0];
       _vertical_gDD.initDD(gDD_tmp, Eigen::Matrix3d::Identity());
+
+      // lDD-gDD map
+      if (lDDtype_lDDid_gDDid != nullptr)
+        (*lDDtype_lDDid_gDDid)[0][0] = 0; 
     }
     else if (lDD_type == 1) {
+      int hlDDid = 0;
       for (auto &DD: DDs) {
         Eigen::Vector3d gDD_tmp = Rwc * DD;
         GlobalDD tmp(gDD_tmp, Eigen::Matrix3d::Identity());
         _horizontal_gDDs.push_back(tmp);
+
+        // lDD-gDD map
+        if (lDDtype_lDDid_gDDid != nullptr)
+          (*lDDtype_lDDid_gDDid)[1][hlDDid] = hlDDid;
+        hlDDid++;
       }
     }
     else if (lDD_type == 2) {

@@ -152,6 +152,10 @@ void Frame::AddLeftFeatures(Eigen::Matrix<float, 259, Eigen::Dynamic>& features_
   std::vector<MaplinePtr> maplines(line_num, nullptr);
   _maplines = maplines;
 
+  // initialize line-gDD map
+  std::vector<std::pair<int, int>> lines_gDD(line_num, std::pair<int, int>(-1, -1));
+  _lines_gDD = std::move(lines_gDD);
+
   // for debug
   relation_left = points_on_line_left;
 }

@@ -241,6 +241,10 @@ public:
   std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>> _line_inliers;
   std::map<int, std::vector<Eigen::Vector4d>> _DDs_on_image;
 
+  // first int: gDD type. 0 1 2 -- vertical horizental slope
+  // second int: gDD id
+  std::vector<std::pair<int, int>> _lines_gDD; 
+
 };
 
 typedef std::shared_ptr<Frame> FramePtr;

@@ -183,6 +183,31 @@ typedef std::shared_ptr<StereoLineConstraint> StereoLineConstraintPtr;
 typedef std::vector<StereoLineConstraintPtr> VectorOfStereoLineConstraints;
 
 
+struct LineGDDConstraint {
+  int id_line;
+  int type_gDD;
+  int id_gDD;
+  Eigen::Vector3d gDD;
+  Eigen::Matrix3d cov;
+  int cnt_gDD;
+
+  LineGDDConstraint() {} 
+  LineGDDConstraint& operator =(LineGDDConstraint& other) {
+    id_line = other.id_line;
+    type_gDD = other.type_gDD;
+    id_gDD = other.id_gDD;
+    gDD = other.gDD;
+    cov = other.cov;
+    cnt_gDD = other.cnt_gDD;
+    return *this;
+  }
+
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+};
+typedef std::shared_ptr<LineGDDConstraint> LineGDDConstraintPtr;
+typedef std::vector<LineGDDConstraintPtr> VectorOfLineGDDConstraint;
+
+
 // for imu
 struct Velocity{
   bool fixed;

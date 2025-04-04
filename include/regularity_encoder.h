@@ -13,6 +13,7 @@
 #include "camera.h"
 
 #include "utils.h"
+#include "read_configs.h"
 
 
 struct Polar {
@@ -36,7 +37,7 @@ public:
   }
 
   bool isInit() {return _is_init;}
-  long long getUpdateCnt() {return _update_cnt;}
+  long long getUpdateCnt() const {return _update_cnt;}
   void initDD(const Eigen::Vector3d &prior, const Eigen::Matrix3d &cov);
   void updateDD(const Eigen::Vector3d &obs, const Eigen::Matrix3d &cov_obs);
 
@@ -53,7 +54,7 @@ private:
 
 class RegularityEncoder {
 public:
-  RegularityEncoder(const CameraPtr camera, double P_of_vertival_inlier, double P_of_all_inlier);
+  RegularityEncoder(const CameraPtr camera, double P_of_vertival_inlier, double P_of_all_inlier, const RegularityEncoderConfig& cfg);
 
   bool encode(const std::vector<Eigen::Vector4d>& lines, 
         std::map<int, std::vector<Eigen::Vector3d>>& DDs, 
@@ -73,13 +74,27 @@ public:
 
   void printNormalInliers(const std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers);
 
+  void printNormalInliers(const std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers, 
+                          const std::map<int, std::map<int, int>>& lDDtype_lDDid_gDDid);
+
   void printLineInliers(const std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>>& inliers);
+
+  void getLineIdMapToGDDId(const std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers, 
+                           const std::map<int, std::map<int, int>>& lDDtype_lDDid_gDDid, 
+                           std::vector<std::pair<int, int>> *lines_gDD_ptr);
+
+  void printLineIdGDDId(const std::vector<std::pair<int, int>> &lines_gDD);
 
   // global DDs
   void refineGlobalDDs(const std::map<int, std::vector<Eigen::Vector3d>> &local_DDs, 
-                       const Eigen::Matrix3d &Rwc);
+                       const Eigen::Matrix3d &Rwc, 
+                       std::shared_ptr<std::map<int, std::map<int, int>>> lDDtype_lDDid_gDDid);
 
   void printGlobalDDs();
+
+  inline const GlobalDD& getVerticalGDD() const { return _vertical_gDD; }
+  inline const std::vector<GlobalDD>& getHorizontalGDDs() const { return _horizontal_gDDs; }
+  inline const std::vector<GlobalDD>& getSloppingGDDs() const { return _slopping_gDDs; }
 
 private:
   void  getValidInterval(const Eigen::Vector3d& last_type_DD, const Eigen::Vector3d& ref_inlier, 
@@ -131,7 +146,8 @@ private:
 
   // global DDs
   void initGlobalDDs(const std::map<int, std::vector<Eigen::Vector3d>> &local_DDs,
-                     const Eigen::Matrix3d &Rwc);
+                     const Eigen::Matrix3d &Rwc,
+                     std::shared_ptr<std::map<int, std::map<int, int>>> lDDtype_lDDid_gDDid);
 
 
 private:
@@ -170,6 +186,7 @@ private:
 
 private:
   const CameraPtr _camera;
+  RegularityEncoderConfig _config;
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW

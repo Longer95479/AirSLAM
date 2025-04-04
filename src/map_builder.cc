@@ -29,7 +29,7 @@ MapBuilder::MapBuilder(VisualOdometryConfigs& configs, ros::NodeHandle nh): _shu
   _feature_detector = std::shared_ptr<FeatureDetector>(new FeatureDetector(configs.plnet_config));
   _ros_publisher = std::shared_ptr<RosPublisher>(new RosPublisher(configs.ros_publisher_config, nh));
   _map = std::shared_ptr<Map>(new Map(_configs.backend_optimization_config, _camera, _ros_publisher));
-  _regularity_encoder = std::shared_ptr<RegularityEncoder>(new RegularityEncoder(_camera, 0.3, 0.99));
+  _regularity_encoder = std::shared_ptr<RegularityEncoder>(new RegularityEncoder(_camera, 0.3, 0.99, _configs.regularity_encoder_config));
 
   _feature_thread = std::thread(boost::bind(&MapBuilder::ExtractFeatureThread, this));
   _tracking_thread = std::thread(boost::bind(&MapBuilder::TrackingThread, this));
@@ -223,10 +223,13 @@ void MapBuilder::TrackingThread(){
 
       // extract DDs using gravity direction
       // EncodeDDs(frame);
+
       // for DEBUG
-      static std::string DDs_save_root = "/workspace/debug_regularity_encoder_topic_version";
-      MakeDir(DDs_save_root);
-      EncodeDDsAndSaveToDir(frame, image_left_rect, DDs_save_root, frame->GetFrameId());
+      if (_configs.regularity_encoder_config.use_regu) {
+        static std::string DDs_save_root = "/workspace/debug_regularity_encoder_topic_version";
+        MakeDir(DDs_save_root);
+        EncodeDDsAndSaveToDir(frame, image_left_rect, DDs_save_root, frame->GetFrameId());
+      }
       
       InsertKeyframe(frame);
       _last_keyframe_tracking = frame;
@@ -304,6 +307,9 @@ void MapBuilder::EncodeDDsAndSaveToDir(FramePtr frame, cv::Mat &image_left_rect,
   std::map<int, std::map<int, std::map<int, Eigen::Vector4d>>> &line_inliers = frame->_line_inliers;
   std::map<int, std::vector<Eigen::Vector4d>> &DDs_on_image = frame->_DDs_on_image;
 
+  std::shared_ptr<std::map<int, std::map<int, int>>> lDDtype_lDDid_gDDid_ptr = std::make_shared<std::map<int, std::map<int, int>>>();
+  std::vector<std::pair<int, int>> &lines_gDD = frame->_lines_gDD;
+
   std::vector<Eigen::Vector4d> lines = frame->GatAllLines();
   Eigen::Matrix<float, 259, Eigen::Dynamic> features = frame->GetAllFeatures();
 
@@ -320,10 +326,14 @@ void MapBuilder::EncodeDDsAndSaveToDir(FramePtr frame, cv::Mat &image_left_rect,
   std::cout << "[reg encode]" << "frame " << index << std::endl;
 
   _regularity_encoder->encode(lines, g, DDs, normal_inliers);
-  _regularity_encoder->refineGlobalDDs(DDs, Rwc);
+  _regularity_encoder->refineGlobalDDs(DDs, Rwc, lDDtype_lDDid_gDDid_ptr);
+  _regularity_encoder->printNormalInliers(normal_inliers, *lDDtype_lDDid_gDDid_ptr);
+  _regularity_encoder->getLineIdMapToGDDId(normal_inliers, *lDDtype_lDDid_gDDid_ptr, &lines_gDD);
 
-  _regularity_encoder->printNormalInliers(normal_inliers);
+  _regularity_encoder->printLineIdGDDId(lines_gDD);
+
   _regularity_encoder->projectDDsOnImage(DDs, DDs_on_image);
+
   _regularity_encoder->normalInliers2LineInliers(lines, normal_inliers, line_inliers);
   // _regularity_encoder->printLineInliers(line_inliers);
   _regularity_encoder->printGlobalDDs();
@@ -664,8 +674,11 @@ void MapBuilder::InsertKeyframe(FramePtr frame){
   }
 
   // insert keyframe to map
-#ifdef USING_TIME_COMPENSATION
-  _map->InsertKeyframe(frame, _td); 
+#ifdef USING_TIME_COMPENSATION // not using now, using .yaml to config
+  if (_configs.regularity_encoder_config.use_regu) 
+    _map->InsertKeyframe(frame, _td, _regularity_encoder);
+  else 
+    _map->InsertKeyframe(frame, _td, nullptr);
 #else
   _map->InsertKeyframe(frame); 
 #endif
