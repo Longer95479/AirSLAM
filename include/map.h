@@ -18,6 +18,7 @@
 #include "g2o_optimization/types.h"
 #include "ros_publisher.h"
 #include "bow/database.h"
+#include "regularity_encoder.h"
 
 class MapRefiner;
 
@@ -26,7 +27,7 @@ public:
   Map();
   Map(OptimizationConfig& backend_optimization_config, CameraPtr camera, RosPublisherPtr ros_publisher);
   void InsertKeyframe(FramePtr frame);
-  void InsertKeyframe(FramePtr frame, double& td);
+  void InsertKeyframe(FramePtr frame, double& td, RegularityEncoderPtr reg_encoder);
   void InsertMappoint(MappointPtr mappoint);
   void InsertMapline(MaplinePtr mapline);
   bool UppdateMapline(MaplinePtr mapline);
@@ -45,7 +46,7 @@ public:
   bool TriangulateMaplineByMappoints(MaplinePtr mapline);
   bool UpdateMappointDescriptor(MappointPtr mappoint);
   void LocalMapOptimization(FramePtr new_frame);
-  void LocalMapOptimization(FramePtr new_frame, double& td);
+  void LocalMapOptimization(FramePtr new_frame, double& td, RegularityEncoderPtr reg_encoder);
   std::pair<FramePtr, FramePtr> MakeFramePair(FramePtr frame0, FramePtr frame1);
   void RemoveOutliers(const std::vector<std::pair<FramePtr, MappointPtr>>& outliers);
   void RemoveLineOutliers(const std::vector<std::pair<FramePtr, MaplinePtr>>& line_outliers);

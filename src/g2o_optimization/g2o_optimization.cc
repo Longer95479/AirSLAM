@@ -25,6 +25,7 @@
 #include "g2o_optimization/edge_project_point_td.h"
 #include "g2o_optimization/edge_project_point.h"
 #include "g2o_optimization/edge_extrinsic_prior.h"
+#include "g2o_optimization/edge_line_align_gDD.h"
 
 #include "g2o_optimization/edge_project_line.h"
 #include "g2o_optimization/edge_relative_pose.h"
@@ -452,6 +453,7 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
     MapOfVelocity& velocities, MapOfBias& biases, std::vector<CameraPtr>& camera_list, 
     VectorOfMonoPointConstraints& mono_point_constraints, VectorOfStereoPointConstraints& stereo_point_constraints, 
     VectorOfMonoLineConstraints& mono_line_constraints, VectorOfStereoLineConstraints& stereo_line_constraints,
+    const VectorOfLineGDDConstraint *line_gDD_constraint_ptr,
     VectorOfIMUConstraints& imu_constraints, const Eigen::Matrix3d& Rwg, double& td, const OptimizationConfig& cfg){
 
   // std::cout << "---------LocalmapOptimization----------" << std::endl;
@@ -562,7 +564,8 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   double id_td = max_bias_id + 1;
   VertexTd* td_vertex = new VertexTd(td);
   td_vertex->setId(id_td);
-  td_vertex->setFixed(false);
+  if (cfg.use_td) td_vertex->setFixed(false);
+  else td_vertex->setFixed(true);
   optimizer.addVertex(td_vertex);
 
 #ifdef OPEN_EXTRINSIC_ESTIMATE
@@ -578,18 +581,17 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   //   extrinsic_vertex->setFixed(false);
   // else
   //   extrinsic_vertex->setFixed(true);
-  extrinsic_vertex->setFixed(true);
+  if (cfg.use_ext) extrinsic_vertex->setFixed(false);
+  else extrinsic_vertex->setFixed(true);
   optimizer.addVertex(extrinsic_vertex);
 
   // 7.z extrinsic edges
   EdgeExtrinsicPrior* extrinsic_prior_edge = new EdgeExtrinsicPrior(Tcb.block<3, 3>(0, 0), Tcb.block<3, 1>(0, 3));
   extrinsic_prior_edge->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(id_ext)));
-  // g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
-  // e->setRobustKernel(rk);
-  // const double thHuberMonoPoint = sqrt(cfg.mono_point);
-  // rk->setDelta(thHuberMonoPoint);
-  // e->setInformation(Matrix6d::Identity() * mono_point_constraints.size());
-  extrinsic_prior_edge->setInformation(1e7 * Matrix6d::Identity());
+  g2o::RobustKernelHuber* rk_ext = new g2o::RobustKernelHuber;
+  rk_ext->setDelta(sqrt(cfg.ext_th_rk));
+  extrinsic_prior_edge->setRobustKernel(rk_ext);
+  extrinsic_prior_edge->setInformation(cfg.ext_pri_info * Matrix6d::Identity());
   // extrinsic_prior_edge->setInformation(0.0 * Matrix6d::Identity());
   optimizer.addEdge(extrinsic_prior_edge);
 #endif
@@ -764,6 +766,21 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
     acc_edges.push_back(e_acc);
   }
 
+  std::vector<EdgeLineAlignGDD*> line_gDD_edges;
+  if (line_gDD_constraint_ptr != nullptr) {
+    for (auto& kv: *line_gDD_constraint_ptr) {
+      EdgeLineAlignGDD* e = new EdgeLineAlignGDD();
+      e->setVertex(0, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex((kv->id_line+max_point_id))));
+      e->setMeasurement(kv->gDD);
+      e->setInformation(Eigen::Matrix<double, 1, 1>(cfg.k_of_gDD_cov/kv->cov(0,0)));
+      g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
+      rk->setDelta(sqrt(cfg.th_rk_gDD));
+      e->setRobustKernel(rk);
+      optimizer.addEdge(e);
+      line_gDD_edges.push_back(e);
+    }
+  }
+
   // solve 
   optimizer.initializeOptimization();
   optimizer.optimize(5);
@@ -796,6 +813,14 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
   for(size_t i=0; i < stereo_line_edges.size(); i++){    
     EdgeStereoSE3ProjectLine* e = stereo_line_edges[i];
     if(e->chi2() > cfg.stereo_line){
+        e->setLevel(1);
+    }
+    e->setRobustKernel(0);
+  }
+
+  for(size_t i=0; i < line_gDD_edges.size(); i++){    
+    EdgeLineAlignGDD* e = line_gDD_edges[i];
+    if(e->chi2() > cfg.th_rk_gDD){
         e->setLevel(1);
     }
     e->setRobustKernel(0);

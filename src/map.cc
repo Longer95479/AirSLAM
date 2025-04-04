@@ -119,7 +119,7 @@ void Map::InsertKeyframe(FramePtr frame){
 
 }
 
-void Map::InsertKeyframe(FramePtr frame, double& td){
+void Map::InsertKeyframe(FramePtr frame, double& td, RegularityEncoderPtr reg_encoder){
   // insert keyframe to map
   int frame_id = frame->GetFrameId();
   _keyframes[frame_id] = frame;
@@ -196,6 +196,27 @@ void Map::InsertKeyframe(FramePtr frame, double& td){
 
   // add new maplines to map
   for(MaplinePtr mpl:new_maplines){
+    const std::map<int, int>& obversers = mpl->GetAllObversers();
+    // check line align to gDD
+    if (reg_encoder != nullptr) {
+      bool align_DD = false;
+      for (auto& kv: obversers) {
+        int frame_id = kv.first;
+        int line_id_local = kv.second;
+        
+        FramePtr kf = GetFramePtr(frame_id);
+        int gDD_type = kf->_lines_gDD[line_id_local].first;
+
+        // not align, check next observer
+        if (gDD_type < 0) continue;
+        
+        align_DD = true;
+        break;
+      }
+      // not align DD at all
+      if (!align_DD) continue;
+    }
+
     InsertMapline(mpl);
   }
 
@@ -203,7 +224,7 @@ void Map::InsertKeyframe(FramePtr frame, double& td){
   if(_keyframes.size() < 2){
     imu_init_frame = frame;
   }else{
-    LocalMapOptimization(frame, td);
+    LocalMapOptimization(frame, td, reg_encoder);
     if(!IMUInit() && _camera->UseIMU()){
       InitializeIMU(frame);
     }
@@ -941,7 +962,7 @@ void Map::LocalMapOptimization(FramePtr new_frame){
   }
 }
 
-void Map::LocalMapOptimization(FramePtr new_frame, double& td){
+void Map::LocalMapOptimization(FramePtr new_frame, double& td, RegularityEncoderPtr reg_encoder){
   int new_frame_id = new_frame->GetFrameId();  
 
   MapOfPoses poses;
@@ -955,13 +976,14 @@ void Map::LocalMapOptimization(FramePtr new_frame, double& td){
   VectorOfMonoLineConstraints mono_line_constraints;
   VectorOfStereoLineConstraints stereo_line_constraints;
   VectorOfIMUConstraints imu_constraints;
+  VectorOfLineGDDConstraint line_gDD_constraints;
   Eigen::Matrix3d Rwg = _Rwg;
 
   // camera
   camera_list.emplace_back(_camera);
 
   // select frames to optimize
-  const size_t MaxFrameNumber = 5;
+  const size_t MaxFrameNumber = _backend_optimization_config.win_size;
   size_t fixed_frame_num = 0;
   std::vector<FramePtr> neighbor_frames;
   size_t frame_num = std::min(MaxFrameNumber, _keyframes.size());
@@ -1010,10 +1032,58 @@ void Map::LocalMapOptimization(FramePtr new_frame, double& td){
     const std::vector<MaplinePtr>& neighbor_maplines = neighbor_frame->GetConstAllMaplines();
     for(const MaplinePtr& mpl : neighbor_maplines){
       if(!mpl || !mpl->IsValid() || mpl->local_map_optimization_frame_id == new_frame_id) continue;
+
+      const std::map<int, int>& obversers = mpl->GetAllObversers();
+      // check line align to gDD
+      if (reg_encoder != nullptr) {
+        bool align_DD = false;
+        for (auto& kv: obversers) {
+          int frame_id = kv.first;
+          int line_id_local = kv.second;
+          
+          FramePtr kf = GetFramePtr(frame_id);
+          int gDD_type = kf->_lines_gDD[line_id_local].first;
+          int gDD_id = kf->_lines_gDD[line_id_local].second;
+
+          // not align, check next observer
+          if (gDD_type < 0) continue;
+          
+          LineGDDConstraintPtr line_gDD_constraint = std::shared_ptr<LineGDDConstraint>(new LineGDDConstraint);
+          line_gDD_constraint->id_line = mpl->GetId();
+          line_gDD_constraint->type_gDD = gDD_type;
+          line_gDD_constraint->id_gDD = gDD_id;
+
+          if (gDD_type == 0) { // align to vertical DD
+            const GlobalDD& vertical_gDD = reg_encoder->getVerticalGDD();
+            line_gDD_constraint->gDD = vertical_gDD._gDD;
+            line_gDD_constraint->cov = vertical_gDD._cov;
+            line_gDD_constraint->cnt_gDD = vertical_gDD.getUpdateCnt();
+          }
+          else if (gDD_type == 1) { // align to horizontal DD
+            const std::vector<GlobalDD>& horizontal_gDDs = reg_encoder->getHorizontalGDDs();
+            line_gDD_constraint->gDD = horizontal_gDDs[gDD_id]._gDD;
+            line_gDD_constraint->cov = horizontal_gDDs[gDD_id]._cov;
+            line_gDD_constraint->cnt_gDD = horizontal_gDDs[gDD_id].getUpdateCnt();
+          }
+          else { // align to slopping DD
+            const std::vector<GlobalDD>& slopping_gDDs = reg_encoder->getSloppingGDDs();
+            line_gDD_constraint->gDD = slopping_gDDs[gDD_id]._gDD;
+            line_gDD_constraint->cov = slopping_gDDs[gDD_id]._cov;
+            line_gDD_constraint->cnt_gDD = slopping_gDDs[gDD_id].getUpdateCnt();
+          }
+
+          line_gDD_constraints.push_back(line_gDD_constraint);
+
+          align_DD = true;
+          break;
+        }
+        // not align DD at all
+        if (!align_DD) continue;
+      }
+
       mpl->local_map_optimization_frame_id = new_frame_id;
       maplines.push_back(mpl);
 
-      const std::map<int, int>& obversers = mpl->GetAllObversers();
       for(auto& kv : obversers){
         FramePtr kf = GetFramePtr(kv.first);
         if(kf && kf->local_map_optimization_frame_id != new_frame_id){
@@ -1101,6 +1171,8 @@ void Map::LocalMapOptimization(FramePtr new_frame, double& td){
   for(auto& mpl : maplines){
     if(!mpl || !mpl->IsValid()) continue;
 
+    const std::map<int, int> obversers = mpl->GetAllObversers();
+    
     // vertex
     int mpl_id = mpl->GetId();
     Line3d line_3d;
@@ -1110,7 +1182,6 @@ void Map::LocalMapOptimization(FramePtr new_frame, double& td){
     // constraints
     VectorOfMonoLineConstraints tmp_mono_line_constraints;
     VectorOfStereoLineConstraints tmp_stereo_line_constraints;
-    const std::map<int, int> obversers = mpl->GetAllObversers();
     for(auto& kv : obversers){
       FramePtr kf = GetFramePtr(kv.first);
       if(!kf || (kf->local_map_optimization_frame_id != new_frame_id && kf->local_map_optimization_fix_frame_id != new_frame_id)) continue;
@@ -1147,9 +1218,18 @@ void Map::LocalMapOptimization(FramePtr new_frame, double& td){
     }
   }
 
-  LocalmapOptimization(poses, points, lines, velocities, biases, camera_list, mono_point_constraints, 
-      stereo_point_constraints, mono_line_constraints, stereo_line_constraints, imu_constraints, Rwg,
-      td, _backend_optimization_config);
+  if (reg_encoder != nullptr) {
+    LocalmapOptimization(poses, points, lines, velocities, biases, camera_list, mono_point_constraints, 
+        stereo_point_constraints, mono_line_constraints, stereo_line_constraints, 
+        &line_gDD_constraints,
+        imu_constraints, Rwg, td, _backend_optimization_config);
+  }
+  else {
+    LocalmapOptimization(poses, points, lines, velocities, biases, camera_list, mono_point_constraints, 
+        stereo_point_constraints, mono_line_constraints, stereo_line_constraints, 
+        nullptr,
+        imu_constraints, Rwg, td, _backend_optimization_config);
+  }
 
   // erase point outliers
   std::vector<std::pair<FramePtr, MappointPtr>> outliers;

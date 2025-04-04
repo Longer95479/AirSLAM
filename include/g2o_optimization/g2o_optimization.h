@@ -28,6 +28,7 @@ void LocalmapOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d&
     MapOfVelocity& velocities, MapOfBias& biases, std::vector<CameraPtr>& camera_list, 
     VectorOfMonoPointConstraints& mono_point_constraints, VectorOfStereoPointConstraints& stereo_point_constraints, 
     VectorOfMonoLineConstraints& mono_line_constraints, VectorOfStereoLineConstraints& stereo_line_constraints,
+    const VectorOfLineGDDConstraint *line_gDD_constraint_ptr,
     VectorOfIMUConstraints& imu_constraints, const Eigen::Matrix3d& Rwg, double& td, const OptimizationConfig& cfg);
 
 int FrameOptimization(MapOfPoses& poses, MapOfPoints3d& points, MapOfLine3d& lines,
