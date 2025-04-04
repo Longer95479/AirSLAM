@@ -23,7 +23,7 @@
 struct InputData{
   size_t index;
   double time;
-  double td_used; /* time compenstation, fix for a frame*/
+  double td_used = 0; /* time compenstation, fix for a frame*/
   cv::Mat image_left;
   cv::Mat image_right;
   ImuDataList batch_imu_data;
@@ -128,7 +128,7 @@ private:
 
   // for cam and imu timestamp compensation
   // imu_t_cam = cam_t_cam + td
-  double _td;
+  double _td = 0.0;
   //for saving to csv and plot
   std::vector<std::pair<double, double>> tsp_tds;
 
