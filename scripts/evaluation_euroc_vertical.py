@@ -5,6 +5,7 @@ import os
 import math
 import numpy as np
 import shutil
+import re
 
 def read_tum_file(file_path):
   traj = []
@@ -63,34 +64,16 @@ MakeDir(eva_seq_root)
 sequences = os.listdir(map_root)
 print(sequences)
 for sequence in sequences:
-  gt_path = os.path.join(traj_gt_dir, (sequence+"/state_groundtruth_estimate0/data.csv"))
+  # regu exp only for MH dataset
+  gt_path = os.path.join(traj_gt_dir, (re.findall(r"(MH_\d+_[^_]+)_.*", sequence)[0]+"/state_groundtruth_estimate0/data.csv"))
   result_root = os.path.join(map_root, sequence)
   result_path = os.path.join(result_root, traj_filename)
   
-  gt_traj = read_tum_file(gt_path)
-  result_traj = read_tum_file(result_path)
-  print(sequence)
-  if len(gt_traj) == 0 or len(result_traj) == 0:
-    tracking = "LOST"
-  else:
-    gt_start_time = gt_traj[0][0]
-    gt_end_time = gt_traj[-1][0]
-
-    result_start_time = result_traj[0][0]
-    result_end_time = result_traj[-1][0]
-
-    print(result_end_time)
-    print(gt_end_time)
-    tracking = "LOST" if abs(result_end_time-gt_end_time) > 10 else "GOOD"
-  print("{} : {}".format(sequence, tracking))
-  if tracking == "LOST":
-    continue
-
   eva_seq_file = sequence + ".zip"
   eva_seq_path = os.path.join(eva_seq_root, eva_seq_file)
   print(gt_path)
   print("eva_seq_path = {}".format(eva_seq_path))
-  os.system("evo_ape tum {} {} -as --save_results {}".format(gt_path, result_path, eva_seq_path))
+  os.system("evo_ape euroc {} {} -as --save_results {}".format(gt_path, result_path, eva_seq_path))
 
 table_file = os.path.join(evo_save_root, sum_save_name)
 os.system("evo_res {}/*.zip -p --use_filenames --save_table {}".format(eva_seq_root, table_file))

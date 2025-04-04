@@ -1,0 +1,60 @@
+keyframe:
+  lost_num_match: 10
+  max_num_match: 80
+  min_init_stereo_feature: 90
+  min_num_match: 30
+  tracking_parallax_rate: 0.1
+  tracking_point_rate: 0.65
+optimization:
+  backend:
+    ext_pri_info: 10000000.0
+    ext_th_rk: 100.0
+    k_of_gDD_cov: 10.0
+    mono_line: 50
+    mono_point: 50
+    rate: 0.5
+    stereo_line: 75
+    stereo_point: 75
+    th_rk_gDD: 100.0
+    use_ext: false
+    use_td: false
+    win_size: 5
+  tracking:
+    mono_line: 50
+    mono_point: 50
+    rate: 0.5
+    stereo_line: 75
+    stereo_point: 75
+plnet:
+  keypoint_threshold: 0.004
+  line_length_threshold: 50
+  line_threshold: 0.75
+  max_keypoints: 400
+  remove_borders: 4
+  use_superpoint: 1
+point_matcher:
+  engine_file: superpoint_lightglue.engine
+  image_height: 480
+  image_width: 752
+  matcher: 0
+  onnx_file: superpoint_lightglue.onnx
+regularity_encoder:
+  cardin_peak_thr: 0.12217304763960307
+  epsilon: 0.10452846326765346
+  tau: 4
+  use_regu: true
+ros_publisher:
+  feature: 1
+  feature_topic: /AirSLAM/feature
+  frame_odometry_topic: /AirSLAM/LatestOdometry
+  frame_pose: 1
+  frame_pose_topic: /AirSLAM/frame_pose
+  keyframe: 1
+  keyframe_topic: /AirSLAM/keyframe
+  map: 1
+  map_topic: /AirSLAM/map
+  mapline: 1
+  mapline_topic: /AirSLAM/mapline
+  path_topic: /AirSLAM/odometry
+  reloc: 0
+  reloc_topic: /AirSLAM/reloc
