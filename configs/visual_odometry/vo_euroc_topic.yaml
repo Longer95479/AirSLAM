@@ -4,7 +4,7 @@ plnet:
   keypoint_threshold: 0.004
   remove_borders: 4 
   line_threshold: 0.75
-  line_length_threshold: 50
+  line_length_threshold: 10
 
 point_matcher:
   matcher: 0   # 0 for lightglue, 1 for superglue
@@ -29,11 +29,24 @@ optimization:
     stereo_line: 75
     rate: 0.5
   backend:
+    win_size: 10
     mono_point: 50
     stereo_point: 75
     mono_line: 50
     stereo_line: 75
     rate: 0.5
+    use_td: true
+    th_rk_gDD: 100.0
+    k_of_gDD_cov: 10.0
+    use_ext: false
+    ext_th_rk: 100.0  
+    ext_pri_info: 1.0e+7 
+
+regularity_encoder:
+  use_regu: true
+  tau: 5
+  epsilon: 0.0175 # sin(M_PI/180)
+  cardin_peak_thr: 0.157
 
 ros_publisher:
   feature: 1
@@ -56,5 +69,3 @@ ros_subscriber:
   imu_topic: "/imu0" 
   left_img_topic: "/cam0/image_raw"
   right_img_topic: "/cam1/image_raw"
-
-

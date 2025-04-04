@@ -29,11 +29,27 @@ optimization:
     stereo_line: 75
     rate: 0.5
   backend:
+    win_size: 5
     mono_point: 50
     stereo_point: 75
     mono_line: 50
     stereo_line: 75
     rate: 0.5
+
+    use_td: false
+
+    th_rk_gDD: 100.0
+    k_of_gDD_cov: 10.0 
+
+    use_ext: false
+    ext_th_rk: 100.0  
+    ext_pri_info: 1.0e+7 
+
+regularity_encoder:
+  use_regu: true
+  tau: 5
+  epsilon: 0.0175 # sin(M_PI/180)
+  cardin_peak_thr: 0.157
 
 ros_publisher:
   feature: 1

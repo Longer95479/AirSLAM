@@ -154,13 +154,36 @@ struct OptimizationConfig{
     mono_line = optimization_node["mono_line"].as<double>();
     stereo_line = optimization_node["stereo_line"].as<double>();
     rate = optimization_node["rate"].as<double>();    
+    if (optimization_node["th_rk_gDD"])
+      th_rk_gDD = optimization_node["th_rk_gDD"].as<double>();    
+    if (optimization_node["k_of_gDD_cov"])
+      k_of_gDD_cov = optimization_node["k_of_gDD_cov"].as<double>();    
+    if (optimization_node["ext_th_rk"])
+      ext_th_rk = optimization_node["ext_th_rk"].as<double>();    
+    if (optimization_node["ext_pri_info"])
+      ext_th_rk = optimization_node["ext_pri_info"].as<double>();    
+    if (optimization_node["use_td"])
+      use_td = optimization_node["use_td"].as<bool>();    
+    if (optimization_node["use_ext"])
+      use_ext = optimization_node["use_ext"].as<bool>();    
+    if (optimization_node["win_size"])
+      win_size = optimization_node["win_size"].as<int>();    
+ 
   }
 
+  int win_size = 5;
   double mono_point;
   double stereo_point;
   double mono_line;
   double stereo_line;
   double rate;
+  double th_rk_gDD = 100.0;
+  double k_of_gDD_cov = 10.0; 
+  double ext_th_rk = 100.0;  
+  double ext_pri_info = 1e7; 
+  bool use_td = false;
+  bool use_ext = false;
+
 };
 
 struct RosPublisherConfig{
@@ -214,6 +237,20 @@ struct RosSubscriberConfig{
 
 };
 
+struct RegularityEncoderConfig{
+  RegularityEncoderConfig() {}
+  void Load(const YAML::Node& regularity_endocer_node){
+    use_regu = regularity_endocer_node["use_regu"].as<bool>();
+    tau = regularity_endocer_node["tau"].as<int>();
+    epsilon = regularity_endocer_node["epsilon"].as<double>();   
+    cardin_peak_thr = regularity_endocer_node["cardin_peak_thr"].as<double>();   
+  }
+  
+  bool use_regu = false;
+  int tau = 5; // cardinality threshold
+  double epsilon = std::sin(M_PI/180); // inner product threshold
+  double cardin_peak_thr = 9 * M_PI/180; // merge two sets of valid intervals if their corresponding in under-stabbing probes are close
+};
 
 struct VisualOdometryConfigs{
   std::string dataroot;
@@ -230,6 +267,7 @@ struct VisualOdometryConfigs{
   OptimizationConfig backend_optimization_config;
   RosPublisherConfig ros_publisher_config;
   RosSubscriberConfig ros_subscriber_config;
+  RegularityEncoderConfig regularity_encoder_config;
 
   VisualOdometryConfigs() {}
 
@@ -254,7 +292,10 @@ struct VisualOdometryConfigs{
     tracking_optimization_config.Load(file_node["optimization"]["tracking"]);
     backend_optimization_config.Load(file_node["optimization"]["backend"]);
     ros_publisher_config.Load(file_node["ros_publisher"]);
-    ros_subscriber_config.Load(file_node["ros_subscriber"]);
+    if (file_node["ros_subscriber"])
+      ros_subscriber_config.Load(file_node["ros_subscriber"]);
+    if (file_node["regularity_encoder"])
+      regularity_encoder_config.Load(file_node["regularity_encoder"]);
   }
 };
 

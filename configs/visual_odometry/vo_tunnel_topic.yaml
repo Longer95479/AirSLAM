@@ -1,9 +1,9 @@
 plnet:
   use_superpoint: 1 
-  # max_keypoints: 350 
-  max_keypoints: 400
-  # keypoint_threshold: 0.0035
-  keypoint_threshold: 0.004
+  max_keypoints: 350
+  # max_keypoints: 400
+  keypoint_threshold: 0.0035
+  # keypoint_threshold: 0.004
   remove_borders: 4 
   line_threshold: 0.75
   line_length_threshold: 50
@@ -18,10 +18,12 @@ point_matcher:
 keyframe:
   min_init_stereo_feature: 30
   lost_num_match: 10
-  min_num_match: 30
-  max_num_match: 80
-  tracking_point_rate: 0.65  
-  tracking_parallax_rate: 0.1
+  # min_num_match: 30
+  # max_num_match: 80
+  min_num_match: 12
+  max_num_match: 36
+  tracking_point_rate: 0.50
+  tracking_parallax_rate: 0.5
 
 optimization:
   tracking:
@@ -31,11 +33,24 @@ optimization:
     stereo_line: 75
     rate: 0.5
   backend:
+    win_size: 20
     mono_point: 50
     stereo_point: 75
     mono_line: 50
     stereo_line: 75
     rate: 0.5
+    use_td: false
+    th_rk_gDD: 100.0
+    k_of_gDD_cov: 10.0 
+    use_ext: false
+    ext_th_rk: 100.0  
+    ext_pri_info: 1.0e+7 
+
+regularity_encoder:
+  use_regu: true 
+  tau: 5
+  epsilon: 0.0175 # sin(M_PI/180)
+  cardin_peak_thr: 0.157
 
 ros_publisher:
   feature: 1
@@ -58,5 +73,3 @@ ros_subscriber:
   imu_topic: "/mavros/imu/data_raw" 
   left_img_topic: "/camera/infra1/image_rect_raw"
   right_img_topic: "/camera/infra2/image_rect_raw"
-
-
