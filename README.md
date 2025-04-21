@@ -1,13 +1,13 @@
 整体框架，虚线框为增加的部分：
 
 <p align="middle">
-  <img src="figures/system_overview.png" width="500" />
+  <img src="figures/system_overview.png" width="600" />
 </p>
 
 实现效果如下图：
 
 <p align="middle">
-  <img src="figures/MH04_visualization.png" width="500" />
+  <img src="figures/MH04_visualization.png" width="600" />
 </p>
 
 - 针对传统方法提取的线特征较杂乱且三角化结果较差的问题，基于共识投票策略，在 AirSLAM 上开发了提取场景结构主方向的前端模块，实现场景结构线主方向的估计。
