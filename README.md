@@ -35,7 +35,7 @@
   - 利用线特征提取主方向，并用主方向筛选参与优化的线段，并在优化时加入主方向的约束，能够提高定位精度
 
 <p align="middle">
-  <img src="figures/rmse.png" width="500" />
+  <img src="figures/rmse.png" width="400" />
 </p>
 
   - （不提取主方向） VS （提取主方向 + 筛除不属于任意主方向的线段 + 后端增加主方向约束）
