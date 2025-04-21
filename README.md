@@ -1,3 +1,15 @@
+整体框架，虚线框为增加的部分：
+
+<p align="middle">
+  <img src="figures/system_overview.png" width="500" />
+</p>
+
+实现效果如下图：
+
+<p align="middle">
+  <img src="figures/MH04_visualization.png" width="500" />
+</p>
+
 - 针对传统方法提取的线特征较杂乱且三角化结果较差的问题，基于共识投票策略，在 AirSLAM 上开发了提取场景结构主方向的前端模块，实现场景结构线主方向的估计。
 该模块实现了多个水平主方向的检测，且可扩展到对倾斜主方向
 的提取，不依赖于特定的线特征，示意如下：
@@ -7,9 +19,43 @@
   <img src="figures/DDs.jpg" width="400" />
 </p>
 
-- 某帧内的局部主方向与该帧的姿态估计受噪声影响，由此计算出的全局主方向将会偏离真值，为估
-计出准确的全局主方向，使用卡尔曼滤波实现对全局主方向的微调。相比单次观测，该功能可统计主
-方向的协方差矩阵，用于外点的剔除
+- 某帧内的局部主方向与该帧的姿态估计受噪声影响，由此计算出的全局主方向将会偏离真值，为估计出准确的全局主方向，使用卡尔曼滤波实现对全局主方向的微调。相比单次观测，该功能可统计主方向的协方差矩阵，用于外点的剔除。我们能够得到调整后的主方向，以及对应的协方差矩阵直观来看，统计次数越多，协方差越小，越可信
+
+- 主方向约束参与的后端优化。简单来说，将空间中的线段在优化的过程中对齐到主方向。
+  - 蓝色节点为位姿；粉色节点为线的3D表示；黑色节点为约束：IMU 预积分约束，线重投影约束，主方向约束
+
+<p align="middle">
+  <img src="figures/factor_graph.png" width="250" />
+</p>
+
+实验结果：
+
+- ori 表示使用点特征和线特征，pts 表示仅使用点特征，regu 表示使用点特征、线特征、后端增加主方向约束。加粗表示最佳结果
+
+  - 利用线特征提取主方向，并用主方向筛选参与优化的线段，并在优化时加入主方向的约束，能够提高定位精度
+
+<p align="middle">
+  <img src="figures/rmse.png" width="500" />
+</p>
+
+  - （不提取主方向） VS （提取主方向 + 筛除不属于任意主方向的线段 + 后端增加主方向约束）
+
+<p align="middle">
+  <img src="figures/noDDs_vs_DDs_constrain_optim-0.png" width="850" />
+</p>
+
+<p align="middle">
+  <img src="figures/noDDs_vs_DDs_constrain_optim-1.png" width="850" />
+</p>
+
+ - （提取主方向 + 筛除不属于任意主方向的线段 + 后端增加主方向约束） VS （提取主方向 + 筛除不属于任意主方向的线段）
+
+<p align="middle">
+  <img src="figures/DDs_constrain_optim_vs_only_DDs_filter.png" width="850" />
+</p>
+
+
+增加的其他功能：
 
 - AirSLAM 在没有时间同步的个人数据集上测试时漂移较大，为了解决IMU与相机时间存在偏移引起
 的问题，开发了 IMU 与相机时间戳偏移在线估计功能（[博客：时间戳偏移在线估计](https://longer95479.github.io/temporal-online-calibration-exp)）。
