@@ -168,8 +168,9 @@ bool RegularityEncoder::encode(const std::vector<Eigen::Vector4d>& lines,
                                                           _vertical_inliers, _vertical_DD,
                                                           _horizontal_DDs, _horizontal_inliers);
 
-  // slopping_inlier_num = estimateSloppingDDsAndInliers(normals_of_projection_plane, _horizontal_inliers[0], 
-  //                                                     _slopping_DDs, _slopping_inliers);
+  slopping_inlier_num = estimateSloppingDDsAndInliers(normals_of_projection_plane,
+                                                      _horizontal_inliers, _horizontal_DDs,
+                                                      _slopping_DDs, _slopping_inliers);
 
   inlier_num = vertical_inlier_num + horizontal_inlier_num + slopping_inlier_num; 
     
@@ -378,13 +379,75 @@ int RegularityEncoder::estimateHorizontalDDsAndInliers(std::map<int, Eigen::Vect
 
 }
 
-int estimateSloppingDDsAndInliers(std::map<int, Eigen::Vector3d>& normals_of_projection_plane, 
+int RegularityEncoder::estimateSloppingDDsAndInliers(std::map<int, Eigen::Vector3d>& normals_of_projection_plane, 
       const std::map<int, std::map<int, Eigen::Vector3d>>& horizontal_inliers, 
       const std::vector<Eigen::Vector3d>& horizontal_DDs,
       std::vector<Eigen::Vector3d>& slopping_DDs, 
       std::map<int, std::map<int, Eigen::Vector3d>>& slopping_inliers) 
 {
-  ;
+  assert(horizontal_inliers.size() > 0);
+
+  // for reuse func: getDDsAndInliers
+  std::vector<std::vector<Eigen::Vector3d>> slopping_DDs_group;
+  std::vector<std::map<int, std::map<int, Eigen::Vector3d>>> slopping_inliers_group;
+
+  for (int i = 0; i < horizontal_DDs.size(); i++) {
+    // intervals
+    // <endpoint, <0/1, normal_id>>, 0 for interval start, 1 for interval end
+    std::map<double, std::pair<int, int>> intervals;
+    // <left endpoint, right endpoint>
+    std::vector<std::pair<double, double>> overlaps;
+  
+    Eigen::Vector3d ref_inlier = horizontal_inliers.at(i).begin()->second;
+
+    std::cout << "[estimateSloppingDDsAndInliers: " << i << "]" << std::endl;
+    
+    // compute valid intervals for all normals
+    std::map<int, Eigen::Vector3d>::iterator it_normals;
+    for (it_normals = normals_of_projection_plane.begin(); it_normals != normals_of_projection_plane.end();) {
+      double normal_id = it_normals->first;
+      Eigen::Vector3d normal = it_normals->second;
+  
+      getValidInterval(horizontal_DDs.at(i), ref_inlier, normal, normal_id, intervals);
+  
+      it_normals++;
+    }
+  
+    getOverlapRegion(intervals, overlaps);
+
+    std::vector<Eigen::Vector3d> slopping_DDs_tmp;
+    std::map<int, std::map<int, Eigen::Vector3d>> slopping_inliers_tmp;
+
+    getDDsAndInliers(horizontal_DDs.at(i), ref_inlier, intervals, overlaps, normals_of_projection_plane,
+        slopping_DDs_tmp, slopping_inliers_tmp);
+
+    slopping_DDs_group.push_back(slopping_DDs_tmp);
+    slopping_inliers_group.push_back(slopping_inliers_tmp);
+  }
+
+  // combine and reindex slopping DDs
+  for (int i = 0; i < slopping_DDs_group.size(); i++) {
+    for (auto& DD: slopping_DDs_group[i]) {
+      slopping_DDs.push_back(DD);
+    }
+  }
+
+  // combine and reindex slopping inliers
+  int cnt = 0;
+  for (int i = 0; i < slopping_inliers_group.size(); i++) {
+    for (auto& dummyDDid__lineid_inliers_pair: slopping_inliers_group[i]) {
+      slopping_inliers[cnt] = dummyDDid__lineid_inliers_pair.second;
+      cnt++;
+    }
+  }
+
+  double inliers_num = 0;
+  for (auto& DDid_inlier: slopping_inliers) {
+    inliers_num += DDid_inlier.second.size();
+  }
+
+  return inliers_num;
+
 }
 
 void RegularityEncoder::getValidInterval(const Eigen::Vector3d& last_type_DD, const Eigen::Vector3d& ref_inlier, 
@@ -962,7 +1025,58 @@ void RegularityEncoder::refineGlobalDDs(const std::map<int, std::vector<Eigen::V
       }
     }
     else if (DD_type == 2) { // slop DDs
+      // travel all lDD
+      int lDDid = 0;
+      for (auto &lDD: lDDs) {
+        Eigen::Vector3d gDD_measure = Rwc * lDD;
+        int sgDDid = 0;
 
+        // Not observe any slopping global DD yet, 
+        // just create a new slopping gloabal DD
+        if (_slopping_gDDs.size() == 0) {
+          GlobalDD new_slop_gDD(gDD_measure, Eigen::Matrix3d::Identity());
+          _slopping_gDDs.push_back(new_slop_gDD);
+
+          // lDD-gDD map
+          if (lDDtype_lDDid_gDDid != nullptr)
+            (*lDDtype_lDDid_gDDid)[2][lDDid] = sgDDid; 
+          continue;
+        }
+ 
+        // compare with all slopping global DD
+        bool is_align = false;
+        for (auto &slop_gDD: _slopping_gDDs) {
+          Eigen::Vector3d &sgDD = slop_gDD._gDD;
+
+          // compare
+          double inner_product = sgDD.dot(gDD_measure);
+          double abs_inner_product = std::abs(inner_product);
+          if (abs_inner_product > 0.96) { // align exist slopping global DD
+            if (inner_product < 0) {
+              gDD_measure = -gDD_measure;
+            }
+            slop_gDD.updateDD(gDD_measure, Eigen::Matrix3d::Identity());
+            is_align = true;
+
+            // lDD-gDD map
+            if (lDDtype_lDDid_gDDid != nullptr)
+              (*lDDtype_lDDid_gDDid)[2][lDDid] = sgDDid; 
+
+            break;
+          }
+          sgDDid++;
+        }
+
+        if (!is_align) { // create a new slopping global DD
+          GlobalDD new_slop_gDD(gDD_measure, Eigen::Matrix3d::Identity());
+          _slopping_gDDs.push_back(new_slop_gDD);
+
+          // lDD-gDD map
+          if (lDDtype_lDDid_gDDid != nullptr)
+            (*lDDtype_lDDid_gDDid)[2][lDDid] = _slopping_gDDs.size() - 1;
+        }
+        lDDid++;
+      }
     }
   }
 
@@ -1001,6 +1115,17 @@ void RegularityEncoder::initGlobalDDs(const std::map<int, std::vector<Eigen::Vec
       }
     }
     else if (lDD_type == 2) {
+      int slDDid = 0;
+      for (auto &DD: DDs) {
+        Eigen::Vector3d gDD_tmp = Rwc * DD;
+        GlobalDD tmp(gDD_tmp, Eigen::Matrix3d::Identity());
+        _slopping_gDDs.push_back(tmp);
+
+        // lDD-gDD map
+        if (lDDtype_lDDid_gDDid != nullptr)
+          (*lDDtype_lDDid_gDDid)[2][slDDid] = slDDid;
+        slDDid++;
+      }
 
     }
   }
@@ -1029,6 +1154,23 @@ void RegularityEncoder::printGlobalDDs()
 
     std::cout << "cov" << i << ": " << std::endl;
     std::cout << hgDD._cov << std::endl;
+
+    std::cout << std::endl;
+    i++;
+  }
+
+  std::cout << "- slopping global DD:" << std::endl;
+  std::cout << "size: " << _slopping_gDDs.size() << std::endl;
+  i = 0;
+  for (auto &sgDD: _slopping_gDDs) {
+    std::cout << "update cnt: " << sgDD.getUpdateCnt() << std::endl;
+
+    std::cout << "val" << i << ": " << sgDD._gDD.transpose() << std::endl;
+    Polar gDD_polar(sgDD._gDD(0), sgDD._gDD(1));
+    std::cout << gDD_polar << std::endl;
+
+    std::cout << "cov" << i << ": " << std::endl;
+    std::cout << sgDD._cov << std::endl;
 
     std::cout << std::endl;
     i++;
