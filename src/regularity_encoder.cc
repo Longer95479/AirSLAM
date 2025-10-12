@@ -177,12 +177,16 @@ bool RegularityEncoder::encode(const std::vector<Eigen::Vector4d>& lines,
   inliers.clear();
 
   DDs[0].push_back(_vertical_DD);
-  DDs[1] = _horizontal_DDs; 
-  DDs[2] = _slopping_DDs;
+  if (_horizontal_DDs.size() > 0) 
+    DDs[1] = _horizontal_DDs; 
+  if (_slopping_DDs.size() > 0) 
+    DDs[2] = _slopping_DDs;
 
   inliers[0].insert(std::make_pair(0, _vertical_inliers));
-  inliers[1] = _horizontal_inliers;
-  inliers[2] = _slopping_inliers;
+  if (_horizontal_inliers.size() > 0)
+    inliers[1] = _horizontal_inliers;
+  if (_slopping_inliers.size() > 0)
+    inliers[2] = _slopping_inliers;
 
   // DEBUG
   std::cout << "-------------------------------" << std::endl;
