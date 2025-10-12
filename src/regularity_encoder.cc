@@ -612,7 +612,11 @@ void RegularityEncoder::getDDsAndInliers(const Eigen::Vector3d& last_type_DD,
       double left_ep = it->second.first;
       double right_ep = it->second.second;
 
-      if (theta >= left_ep && theta < right_ep) {
+      double l_theta = theta - 0.51 * _cardin_peak_thr;
+      double r_theta = theta + 0.51 * _cardin_peak_thr;
+      if ( (theta >= left_ep && theta < right_ep) ||
+           (l_theta >= left_ep && l_theta < right_ep) ||
+           (r_theta >= left_ep && r_theta < right_ep) ) {
         // DEBUG
         printInterval(left_ep, right_ep, "p", line_id);
 
