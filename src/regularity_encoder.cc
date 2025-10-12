@@ -756,9 +756,20 @@ void RegularityEncoder::printNormalInliers(const std::map<int, std::map<int, std
 void RegularityEncoder::printNormalInliers(const std::map<int, std::map<int, std::map<int, Eigen::Vector3d>>>& inliers, 
                                            const std::map<int, std::map<int, int>>& lDDtype_lDDid_gDDid)
 {
-  std::cout << "print normal inliers: " << std::endl;
+  std::cout << "print normal inliers: ";
+
+  std::cout << " ( DD type: "; 
+  for (auto inlier: inliers) { std::cout << inlier.first << " "; }
+  std::cout << "| ";
+
+  std::cout << "gDD type: ";
+  for (auto pr: lDDtype_lDDid_gDDid) { std::cout << pr.first << " "; }
+  std::cout << ")" << std::endl;
+
   for (auto& inlier: inliers) {
-    std::cout << "- type of DD: " << inlier.first << std::endl;
+    std::cout << "- type of DD: " << inlier.first;
+    std::cout << " ( DD size: " << inlier.second.size() << " | "; 
+    std::cout << " gDD size: " << lDDtype_lDDid_gDDid.at(inlier.first).size() << " )" << std::endl; 
     auto& DDid_lineid_normals = inlier.second;
     for (auto& DDid_lineid_normal: DDid_lineid_normals) {
       std::cout << "  - DD id: " << DDid_lineid_normal.first;
@@ -869,6 +880,9 @@ void RegularityEncoder::refineGlobalDDs(const std::map<int, std::vector<Eigen::V
   for (; it != local_DDs.end(); it++) {
     int DD_type = it->first;
     std::vector<Eigen::Vector3d> lDDs = it->second;
+    
+    // DEBUG
+    std::cout << "[debug] DD_type: " << DD_type  << std::endl;
 
     if (DD_type == 0) { // vertical DDs
       // travel all lDD
@@ -1001,6 +1015,7 @@ void RegularityEncoder::printGlobalDDs()
   std::cout << "val: " << _vertical_gDD._gDD.transpose() << std::endl;
   std::cout << "cov: " << std::endl;
   std::cout << _vertical_gDD._cov << std::endl;
+  std::cout << std::endl;
 
   std::cout << "- horizental global DD:" << std::endl;
   std::cout << "size: " << _horizontal_gDDs.size() << std::endl;
