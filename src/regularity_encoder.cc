@@ -341,7 +341,16 @@ int RegularityEncoder::estimateHorizontalDDsAndInliers(std::map<int, Eigen::Vect
   // <left endpoint, right endpoint>
   std::vector<std::pair<double, double>> overlaps;
 
-  Eigen::Vector3d ref_inlier = vertical_inliers.begin()->second;
+  Eigen::Vector3d ref_inlier;
+  if (vertical_inliers.size() > 0)
+    ref_inlier = vertical_inliers.begin()->second;
+  else {
+    ref_inlier << vertical_DD(1), -vertical_DD(0), 0.0;
+    std::cout << "No vertical inlier, using defaut ref: ";
+    std::cout << ref_inlier.transpose() << std::endl;
+  }
+
+  std::cout << "[estimateHorizontalDDsAndInliers]" << std::endl;
   
   // compute valid intervals for all normals
   std::map<int, Eigen::Vector3d>::iterator it_normals;
