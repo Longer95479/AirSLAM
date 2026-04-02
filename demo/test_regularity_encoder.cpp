@@ -46,20 +46,27 @@ int main(int argc, char **argv) {
   plnet_config.line_length_threshold = 50;
   plnet_config.SetModelPath(model_dir);
 
+  RegularityEncoderConfig regu_config;
+  regu_config.tau = 5;
+  regu_config.epsilon = std::sin(M_PI/180);
+  regu_config.cardin_peak_thr = 9 * M_PI/180;
+
   CameraPtr _camera = std::shared_ptr<Camera>(new Camera(camera_config_path));
 
   FeatureDetectorPtr feature_detector = std::shared_ptr<FeatureDetector>(new FeatureDetector(plnet_config));
 
-  RegularityEncoderPtr regularity_encoder = std::shared_ptr<RegularityEncoder>(new RegularityEncoder(_camera, 0.3, 0.99));
+  RegularityEncoderPtr regularity_encoder = std::shared_ptr<RegularityEncoder>(new RegularityEncoder(_camera, 0.3, 0.99, regu_config));
 
   std::vector<std::string> image_names;
   GetFileNames(left_image_dir, image_names);
-  // size_t dataset_length = image_names.size();
-  size_t dataset_length = 14;
+  size_t dataset_length = image_names.size();
+  std::cout << "data_set_length: " << dataset_length << std::endl;
+  // size_t dataset_length = 14;
   for(size_t i = 0; i < dataset_length && ros::ok(); ++i){
     std::cout << "i ==================================== " << i << std::endl;
 
     std::string image_path = ConcatenateFolderAndFileName(left_image_dir, image_names[i]);
+    std::cout << "img_path: " << image_path << std::endl;
     cv::Mat image = cv::imread(image_path, 0);
 
     cv::Mat image_left_rect;
